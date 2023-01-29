@@ -1,0 +1,186 @@
+Grey remote - serial 9AAAA6A6
+
+page 1
+Code: AA 9A AA A6 A6 65 69 AA       1 on
+Code: AA 9A AA A6 A6 65 69 A9       2 on
+Code: AA 9A AA A6 A6 65 69 A6       3 on
+Code: AA 9A AA A6 A6 65 69 A5       4 on
+Code: AA 9A AA A6 A6 65 65 AA       G on
+
+Code: AA 9A AA A6 A6 65 6A AA       1 off
+Code: AA 9A AA A6 A6 65 6A A9       2 off
+Code: AA 9A AA A6 A6 65 6A A6       3 off
+Code: AA 9A AA A6 A6 65 6A A5       4 off
+Code: AA 9A AA A6 A6 65 66 AA       G off
+
+page 2
+Code: AA 9A AA A6 A6 65 69 9A       1 on
+Code: AA 9A AA A6 A6 65 69 99       2 on
+Code: AA 9A AA A6 A6 65 69 96       3 on
+Code: AA 9A AA A6 A6 65 69 95       4 on
+Code: AA 9A AA A6 A6 65 65 AA       G on
+
+Code: AA 9A AA A6 A6 65 6A 9A       1 off
+Code: AA 9A AA A6 A6 65 6A 99       2 off
+Code: AA 9A AA A6 A6 65 6A 96       3 off
+Code: AA 9A AA A6 A6 65 6A 95       4 off
+Code: AA 9A AA A6 A6 65 66 AA       G off
+
+page 3
+
+Code: AA 9A AA A6 A6 65 69 6A       1 on
+Code: AA 9A AA A6 A6 65 69 69       2 on
+Code: AA 9A AA A6 A6 65 69 66       3 on
+Code: AA 9A AA A6 A6 65 69 65       4 on
+
+Code: AA 9A AA A6 A6 65 6A 6A       1 off
+Code: AA 9A AA A6 A6 65 6A 69       2 off
+Code: AA 9A AA A6 A6 65 6A 66       3 off
+Code: AA 9A AA A6 A6 65 6A 65       4 off
+
+page 4
+Code: AA 9A AA A6 A6 65 69 5A       1 on
+Code: AA 9A AA A6 A6 65 69 59       2 on
+Code: AA 9A AA A6 A6 65 69 56       3 on
+Code: AA 9A AA A6 A6 65 69 55       4 on
+
+Code: AA 9A AA A6 A6 65 6A 5A       1 off
+Code: AA 9A AA A6 A6 65 6A 59       2 off
+Code: AA 9A AA A6 A6 65 6A 56       3 off
+Code: AA 9A AA A6 A6 65 6A 55       4 off
+
+last nibble: switch number
+        A = 1,  9 = 2,  6 = 3,  5 = 4
+last but one: page number
+        A = 1,  9 = 2,  6 = 3,  5 = 4
+last but two: on/off and group
+        9 = on,  A = off (normal switch)
+        5 = on,  6 = off (group)
+
+
+White remote - serial: A9AA565AA5
+
+Code: AA A9 AA 56 5A A5 69 A5       page 1, 4, on
+Code: AA A9 AA 56 5A A5 66 AA       group, off
+
+Light-sensor - serial: 9956A96A55
+
+Code: AA 99 56 A9 6A 55 6A 69       under bright light
+Code: AA 99 56 A9 6A 55 69 69       in darkness
+
+switch 2, page 3, normal switch: off (bright light) or on (darkness)
+
+Upstairs. My side remote.  - serial: AA6659969A
+page 2.
+Code: AA AA 66 59 96 9A 69 9A       1 on
+Code: AA AA 66 59 96 9A 65 AA       G on
+
+
+Jill's side - serial - 95656A9A99   - 
+page 2
+Code: AA 95 65 6A 9A 99 69 9A      1 on
+Code: AA 95 65 6A 9A 99 65 AA      G on
+
+
+Encoding: two data bits per nibble
+
+code    code    data
+1010    A       00
+1001    9       01
+0110    6       10
+0101    5       11
+
+
+----------------------------------------------------------
+----------------------------------------------------------
+----------------------------------------------------------
+Grey remote - serial 4022b
+
+page 1
+Code: 04022b90 1 on
+Code: 04022b91 2 on
+Code: 04022b92 3 on
+Code: 04022b93 4 on
+Code: 04022bb0 G on
+
+Code: 04022b80 1 off
+Code: 04022b81 2 off
+Code: 04022b82 3 off
+Code: 04022b83 4 off
+Code: 04022ba0 G off
+
+page 2
+Code: 04022b94 1 on
+Code: 04022b95 2 on
+Code: 04022b96 3 on
+Code: 04022b97 4 on
+Code: 04022bb0 G on
+
+Code: 04022b84 1 off
+Code: 04022b85 2 off
+Code: 04022b86 3 off
+Code: 04022b87 4 off
+Code: 04022ba0 G off
+
+page 3
+
+Code: 04022b98 1 on
+Code: 04022b99 2 on
+Code: 04022b9a 3 on
+Code: 04022b9b 4 on
+
+Code: 04022b88 1 off
+Code: 04022b89 2 off
+Code: 04022b8a 3 off
+Code: 04022b8b 4 off
+
+page 4
+Code: 04022b9c 1 on
+Code: 04022b9d 2 on
+Code: 04022b9e 3 on
+Code: 04022b9f 4 on
+
+Code: 04022b8c 1 off
+Code: 04022b8d 2 off
+Code: 04022b8e 3 off
+Code: 04022b8f 4 off
+
+last 8 bits
+    high nibble: command code:
+            8 - normal switch off
+            9 - normal switch on
+            A - group off
+            B - group on
+    low nibble: parameter
+            switch number
+            high 2 bits: page
+            low 2 bits: index
+
+ 
+
+White remote - serial: 10ec3
+
+Code: 010ec393 page 1, 4, on
+Code: 010ec3a0 group, off
+
+Light-sensor - serial: 5e18f
+
+Code: 05e18f89 under bright light
+Code: 05e18f99 in darkness
+
+switch 2, page 3, normal switch: off (bright light) or on (darkness)
+
+Upstairs. My side remote.  - serial: 0ad64
+page 2.
+Code: 00ad6494 1 on
+Code: 00ad64b0 G on
+
+
+Jill's side - serial: 7b845
+page 2
+Code: 07b84594 1 on
+Code: 07b845b0 G on
+
+New remote from Homestead - serial: d671d
+
+

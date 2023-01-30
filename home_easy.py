@@ -8,6 +8,7 @@ PORT = 433
 ROOT = "/srv/home_easy"
 LIGHT_DATA_FILE = "/srv/home_easy/lights.json"
 SEND_INTERVAL = 2.5
+SEND_DELAY = 1.0
 
 
 from twisted.internet.protocol import DatagramProtocol # type: ignore
@@ -93,6 +94,8 @@ class Server433(DatagramProtocol):
     def send(self, number: int) -> None:
         self.send_queue.append(number)
         if len(self.send_queue) == 1:
+            t = time.time() + SEND_DELAY
+            self.allow_send_at = max(self.allow_send_at, t)
             self.send_next()
 
     def send_next(self) -> None:

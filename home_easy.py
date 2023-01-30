@@ -6,7 +6,7 @@
 DEVICE = "/dev/tx433"
 PORT = 433
 ROOT = "/srv/home_easy"
-LIGHT_DATA_FILE = "/srv/home_easy/lights.json"
+LIGHT_DATA_URL = "http://192.168.2.11/cgi-bin/lights_json"
 SEND_INTERVAL = 2.5
 SEND_DELAY = 1.0
 
@@ -15,19 +15,34 @@ from twisted.internet.protocol import DatagramProtocol # type: ignore
 from twisted.internet import reactor # type: ignore
 import time, os, sys, subprocess, typing, json, socket
 import RPi.GPIO as GPIO  # type: ignore
+import urllib.request
 
 DEBUG = (os.getenv("HEDEBUG") == "HEDEBUG")
-
 
 Short_Name = str
 Light_Data = typing.Dict[str, str]
 All_Light_Data = typing.Dict[Short_Name, Light_Data]
 
+CACHE_DATA: All_Light_Data = {}
+CACHE_EXPIRY_TIME = 0.0
+
 def get_all_light_data() -> All_Light_Data:
+    global CACHE_EXPIRY_TIME, CACHE_DATA
+    t = time.time()
+    if t < CACHE_EXPIRY_TIME:
+        return CACHE_DATA
+
+    CACHE_EXPIRY_TIME = t + 60
     try:
-        return json.load(open(LIGHT_DATA_FILE, "rt"))
-    except:
-        return {}
+        req = urllib.request.Request(url=LIGHT_DATA_URL)
+        r = urllib.request.urlopen(req)
+        reply = r.read().decode("utf-8")
+        CACHE_DATA = json.loads(reply)
+        CACHE_EXPIRY_TIME = t + (24 * 60 * 60)
+        return CACHE_DATA
+    except Exception as e:
+        print("get_all_light_data failed: {}".format(e))
+        return CACHE_DATA
 
 
 class Server433(DatagramProtocol):
@@ -163,7 +178,7 @@ def main() -> None:
 
     os.chdir(ROOT)
 
-    print ("load settings from %s" % LIGHT_DATA_FILE)
+    print ("load settings from %s" % LIGHT_DATA_URL)
     all_light_data = get_all_light_data()
     print ('%u known lights' % len(all_light_data))
 

@@ -33,6 +33,7 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
     Serial.println("Boot " __DATE__);
     Serial.flush();
+    sercom5.initMasterWIRE(100000);
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
         Serial.println("display.begin() failed");
@@ -49,6 +50,7 @@ void setup() {
     display.println(__DATE__);
     display.display();
 
+    sercom5.initMasterWIRE(100000);
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
         Serial.flush();

@@ -25,17 +25,44 @@ void setup() {
     Wire1.begin();
     Serial.begin(9600);
     pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(1000);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(1000);
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(1000);
+    digitalWrite(LED_BUILTIN, LOW);
     Serial.println("Boot");
+    Serial.flush();
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
         Serial.println("display.begin() failed");
+        Serial.flush();
         for(;;);
     }
     display.clearDisplay();
     display.display();
 
+    Serial.println();
+    Serial.println("memory dump (EEPROM)");
+    Serial.flush();
+
+    for (int address = 0; address < 4096; address++) {
+        int v = eeprom_read(address);
+        if (v != 0xff) {
+            Serial.print(address, HEX);
+            Serial.print(" ");
+            Serial.println(v);
+        }
+    }
+    Serial.println();
+    Serial.println("end");
+    Serial.flush();
+
+
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
+        Serial.flush();
         for(;;);
     }
     if (!rtc.isrunning()) {
@@ -48,19 +75,16 @@ void setup() {
     }
 
     Serial.println("memory dump (NVRAM)");
+    Serial.flush();
 
     for (int address = 0; address < 56; address++) {
-        Serial.print(rtc.readnvram(address), HEX);
-        Serial.print(" ");
+        int v = rtc.readnvram(address);
+        if ((v != 0xff) && (v != 0x00)) {
+            Serial.print(address, HEX);
+            Serial.print(" ");
+            Serial.println(v);
+        }
     }
-    Serial.println();
-    Serial.println("memory dump (EEPROM)");
-
-    for (int address = 0; address < 4096; address++) {
-        Serial.print(eeprom_read(address), HEX);
-        Serial.print(" ");
-    }
-    Serial.println();
 }
 uint8_t eeprom_read(uint16_t address)
 {

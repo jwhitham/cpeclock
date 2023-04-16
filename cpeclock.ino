@@ -114,6 +114,8 @@ void eeprom_write(uint16_t address, uint8_t value)
 	delay(10);
 }
 
+static long errors = 0;
+
 // the loop function runs over and over again forever
 void loop() {
     char tmp[16];
@@ -122,9 +124,16 @@ void loop() {
     DateTime now = rtc.now();
     uint8_t save = now.second();
     do {
-        delay(10);
+        delay(1);
         now = rtc.now();
     } while (save == now.second());
+
+    uint8_t expect = (save + 1) % 60;
+    if ((now.second() != expect)
+    || (now.year() != 2012)
+    || (now.month() != 4)) {
+        errors ++;
+    }
 
     digitalWrite(LED_BUILTIN, HIGH);
 
@@ -137,7 +146,7 @@ void loop() {
     snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
     display.setCursor(0, LINE_1_Y);
     display.println(tmp);
-    snprintf(tmp, sizeof(tmp), "%02d/%02d/%04d", now.day(), now.month(), now.year());
+    snprintf(tmp, sizeof(tmp), "%ld", errors);
     display.setCursor(0, LINE_2_Y);
     display.println(tmp);
     display.display();

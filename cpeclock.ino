@@ -20,7 +20,11 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define EEPROM_ADDRESS 0x50
 
+#define NVRAM_SIZE 56
+#define KEY 0x98
+
 RTC_DS1307 rtc;     // RTC address 0x68
+static char ecopy[NVRAM_SIZE];
 
 
 void setup() {
@@ -33,7 +37,7 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
     Serial.println("Boot " __DATE__);
     Serial.flush();
-    sercom5.initMasterWIRE(100000);
+    //sercom5.initMasterWIRE(100000);
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
         Serial.println("display.begin() failed");
@@ -50,7 +54,7 @@ void setup() {
     display.println(__DATE__);
     display.display();
 
-    sercom5.initMasterWIRE(100000);
+    //sercom5.initMasterWIRE(100000);
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
         Serial.flush();
@@ -68,6 +72,10 @@ void setup() {
     delay(1000);
     display.clearDisplay();
     display.display();
+    for (uint8_t i = 0; i < NVRAM_SIZE; i++) {
+        rtc.writenvram(i, i ^ KEY);
+        ecopy[i] = eeprom_read(i);
+    }
     Serial.println("OK");
     Serial.flush();
 }
@@ -114,7 +122,8 @@ void eeprom_write(uint16_t address, uint8_t value)
 	delay(10);
 }
 
-static long errors = 0;
+static uint16_t errors = 0;
+static uint16_t tests = 0;
 
 // the loop function runs over and over again forever
 void loop() {
@@ -123,15 +132,24 @@ void loop() {
     // Wait for RTC to advance
     DateTime now = rtc.now();
     uint8_t save = now.second();
+    uint16_t cycles = 0;
     do {
-        delay(1);
         now = rtc.now();
+        uint8_t expect = (save + 1) % 60;
+        uint8_t i = tests % NVRAM_SIZE;
+        if (((now.second() != expect) && (now.second() != save))
+        || (now.year() != 2012)
+        || (now.month() != 4)
+        || ((rtc.readnvram(i) ^ KEY) != i)) {
+            errors ++;
+            break;
+        }
+        tests ++;
+        cycles ++;
     } while (save == now.second());
 
-    uint8_t expect = (save + 1) % 60;
-    if ((now.second() != expect)
-    || (now.year() != 2012)
-    || (now.month() != 4)) {
+    uint8_t i = save % NVRAM_SIZE;
+    if (ecopy[i] != eeprom_read(i)) {
         errors ++;
     }
 
@@ -141,18 +159,18 @@ void loop() {
     display.clearDisplay();
     display.setFont(&FreeSans9pt7b);
     display.setCursor(0, BLUE_AREA_Y - 1);
-    display.println("..");
+    snprintf(tmp, sizeof(tmp), "%04x", cycles);
+    display.println(tmp);
     display.setFont(&FreeSans12pt7b);
     snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
     display.setCursor(0, LINE_1_Y);
     display.println(tmp);
-    snprintf(tmp, sizeof(tmp), "%ld", errors);
+    snprintf(tmp, sizeof(tmp), "%04x %04x", errors, tests);
     display.setCursor(0, LINE_2_Y);
     display.println(tmp);
     display.display();
 
     // Flash the light
-    delay(50);
     digitalWrite(LED_BUILTIN, LOW);
 
 }

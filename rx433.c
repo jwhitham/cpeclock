@@ -4,7 +4,8 @@
 
 extern uint32_t micros();
 
-uint32_t rx433_data = 0;
+volatile uint32_t rx433_data = 0;
+volatile uint32_t rx433_count = 0;
 
 void rx433_interrupt(void)
 {
@@ -74,7 +75,12 @@ void rx433_interrupt(void)
 
     if ((state == READY_FOR_BIT) && (bit_count >= 32)) {
         /* done */
-        rx433_data = bit_data;
+        if (rx433_data == bit_data) {
+            rx433_count ++;
+        } else {
+            rx433_data = bit_data;
+            rx433_count = 1;
+        }
         state = RESET;
     }
 }

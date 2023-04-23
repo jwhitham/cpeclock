@@ -7,6 +7,8 @@
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
+#define EEPROM_ADDRESS 0x50
+
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -18,26 +20,32 @@
 #define SCREEN_ADDRESS 0x3c ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#define EEPROM_ADDRESS 0x50
 
 #define NVRAM_SIZE 56
 #define KEY 0x98
 
+#define RX433_PIN   (PIN_A1)
+
 RTC_DS1307 rtc;     // RTC address 0x68
-static char ecopy[NVRAM_SIZE];
 
+extern "C" {
+    volatile extern uint32_t rx433_data;
+    volatile extern uint32_t rx433_count;
+    extern void rx433_interrupt(void);
+}
 
-void setup() {
+void setup()
+{
     CircuitPlayground.begin();
     
     Wire.begin();
     Wire1.begin();
     Serial.begin(9600);
     pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(RX433_PIN, INPUT_PULLUP);
     digitalWrite(LED_BUILTIN, HIGH);
     Serial.println("Boot " __DATE__);
     Serial.flush();
-    //sercom5.initMasterWIRE(100000);
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
         Serial.println("display.begin() failed");
@@ -54,7 +62,6 @@ void setup() {
     display.println(__DATE__);
     display.display();
 
-    //sercom5.initMasterWIRE(100000);
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
         Serial.flush();
@@ -68,16 +75,17 @@ void setup() {
             for(;;);
         }
     }
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(1000);
-    display.clearDisplay();
-    display.display();
+    attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
+
     for (uint8_t i = 0; i < NVRAM_SIZE; i++) {
         rtc.writenvram(i, i ^ KEY);
-        ecopy[i] = eeprom_read(i);
     }
+    digitalWrite(LED_BUILTIN, LOW);
     Serial.println("OK");
     Serial.flush();
+    delay(100);
+    display.clearDisplay();
+    display.display();
 }
 
 uint8_t eeprom_read(uint16_t address)
@@ -124,9 +132,31 @@ void eeprom_write(uint16_t address, uint8_t value)
 
 static uint16_t errors = 0;
 static uint16_t tests = 0;
+static uint32_t copy_rx433_data = 0;
+static uint32_t copy_rx433_count = 0;
+static uint32_t copy_countdown = 0;
 
-// the loop function runs over and over again forever
-void loop() {
+
+void collect_rx433_messages(void)
+{
+    // Any new messages received?
+    noInterrupts();
+    if (rx433_data) {
+        if (copy_rx433_data == rx433_data) {
+            copy_rx433_count += rx433_count;
+        } else {
+            copy_rx433_data = rx433_data;
+            copy_rx433_count = rx433_count;
+        }
+        rx433_data = 0;
+        rx433_count = 0;
+        copy_countdown = 3;
+    }
+    interrupts();
+}
+
+void loop()
+{
     char tmp[16];
 
     // Wait for RTC to advance
@@ -144,23 +174,25 @@ void loop() {
             errors ++;
             break;
         }
+        collect_rx433_messages();
         tests ++;
         cycles ++;
     } while (save == now.second());
 
-    uint8_t i = save % NVRAM_SIZE;
-    if (ecopy[i] != eeprom_read(i)) {
-        errors ++;
-    }
-
     digitalWrite(LED_BUILTIN, HIGH);
+
+    if (copy_countdown) {
+        copy_countdown --;
+    }
 
     // Redraw display
     display.clearDisplay();
     display.setFont(&FreeSans9pt7b);
     display.setCursor(0, BLUE_AREA_Y - 1);
-    snprintf(tmp, sizeof(tmp), "%04x", cycles);
-    display.println(tmp);
+    if (copy_countdown) {
+        snprintf(tmp, sizeof(tmp), "%08x %u", copy_rx433_data, copy_rx433_count);
+        display.println(tmp);
+    }
     display.setFont(&FreeSans12pt7b);
     snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
     display.setCursor(0, LINE_1_Y);

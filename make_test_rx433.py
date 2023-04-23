@@ -10,8 +10,8 @@ def main():
     with open("test_rx433.txt", "wt") as fd:
         for edges in [edges1, edges2]:
             for (time, high) in edges:
-                if high and time >= 0.0:
-                    fd.write("{:08x}\n".format(int(math.floor(time * 1e6))))
+                if high:
+                    fd.write("{:08x}\n".format(max(0, int(math.floor(time * 1e6)))))
 
 if __name__ == "__main__":
     main()

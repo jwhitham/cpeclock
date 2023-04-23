@@ -32,9 +32,11 @@ int main(void)
                 break;
             case 0x4022b83:
                 test1_count ++;
+                printf("%d 1\n", test_time);
                 break;
             case 0xad6496:
                 test2_count ++;
+                printf("%d 2\n", test_time);
                 break;
             default:
                 fprintf(stderr, "invalid code received: %08x\n", rx433_data);

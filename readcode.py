@@ -212,13 +212,6 @@ def main():
     assert len(codes12) >= len(codes11)
     assert len(codes22) >= len(codes21)
     print("ok {} {}".format(len(codes12), len(codes22)))
-    print("ok")
-    #with zipfile.ZipFile("he_433_tests.zip") as zf:
-    #edges = read_edges("20230409-0002-bed3-on-00ad6496.csv")
-    #codes = decode_edges(edges)
-    #print(codes)
-    #edges = read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv")
-    #debug(edges)
 
 if __name__ == "__main__":
     main()

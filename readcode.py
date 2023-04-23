@@ -144,16 +144,16 @@ def alt_decode_edges(edges):
         if not high:
             continue
 
-        units = (time - old_time) * 1e6
+        units = ((time - old_time) * 1e6)
         old_time = time
-        # 320 + 220 = 540 = short    8.4    7 .. 10
-        # 1330 + 220 = 1550 = long   24.2   22 .. 25
-        # 2700 + 220 = 2920 = start  45.6   44 .. 49
-        if 440 <= units <= 640:
+        # 320 + 220 = 540 = short
+        # 1330 + 220 = 1550 = long
+        # 2700 + 220 = 2920 = start
+        if 384 <= units < 768:              # 3 .. 5
             code_length = CodeLength.SHORT
-        elif 1450 <= units <= 1650:
+        elif 1408 <= units < 1664:          # 11 .. 12
             code_length = CodeLength.LONG
-        elif 2820 <= units <= 3020:
+        elif 2816 <= units < 3072:          # 22 .. 23
             code_length = CodeLength.START
         else:
             code_length = CodeLength.UNKNOWN

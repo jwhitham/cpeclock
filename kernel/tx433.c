@@ -1,4 +1,4 @@
-/* Copyright (C) 2013, Jack Whitham
+/* Copyright (C) 2013-2023, Jack Whitham
  * Copyright (C) 2009-2010, University of York
  * Copyright (C) 2004-2006, Advanced Micro Devices, Inc.
  *
@@ -98,13 +98,13 @@ static inline void send_high(void)
     GPIO_CLR(1 << TX_PIN);
 }
 
-static inline void send_zero(void)
+static inline void send_long(void)
 {
     send_high(); 
     await(1330);
 }
 
-static inline void send_one(void)
+static inline void send_short(void)
 {
     send_high(); 
     await(320);
@@ -122,20 +122,14 @@ static unsigned transmit_code(unsigned tx_code, unsigned attempts)
         j = 32;
         while (j > 0) {
             unsigned bits;
-            j -= 2;
-            bits = (tx_code >> (unsigned) j) & 3;
-            if (bits == 0) {
-                send_one(); send_zero();
-                send_one(); send_zero();
-            } else if (bits == 1) {
-                send_one(); send_zero();
-                send_zero(); send_one();
-            } else if (bits == 2) {
-                send_zero(); send_one();
-                send_one(); send_zero();
+            j --;
+            bits = (tx_code >> (unsigned) j) & 1;
+            if (bits) {
+                send_long();
+                send_short();
             } else {
-                send_zero(); send_one();
-                send_zero(); send_one();
+                send_short();
+                send_long();
             }
         }
         send_high(); // End code

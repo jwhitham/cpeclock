@@ -167,18 +167,20 @@ def main() -> None:
     sys.stdout = sys.stderr = open("/tmp/home_easy.log", "wt")
     os.chdir(ROOT)
 
-    print ('Compile driver for TX433')
+    print ('Compile driver for TX433', flush=True)
     subprocess.call(["/sbin/rmmod", "tx433"], stderr=subprocess.DEVNULL)
     if 0 == subprocess.call(["/bin/cp", "-r", os.path.join(ROOT, "kernel"), "/tmp/tx433"]):
         os.chdir("/tmp/tx433")
         os.environ["PWD"] = os.getcwd()
         if 0 == subprocess.call(["/usr/bin/make"]):
-            print('Add driver for TX433')
-            subprocess.call(["/sbin/insmod", "/tmp/tx433/tx433.ko"])
+            print('Add driver for TX433', flush=True)
+            if 0 != subprocess.call(["/sbin/insmod", "/tmp/tx433/tx433.ko"]):
+                print('Failed to load driver', flush=True)
+                sys.exit(1)
 
     os.chdir(ROOT)
 
-    print ("load settings from %s" % LIGHT_DATA_URL)
+    print ("load settings from %s" % LIGHT_DATA_URL, flush=True)
     all_light_data = get_all_light_data()
     print ('%u known lights' % len(all_light_data))
 

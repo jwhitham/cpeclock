@@ -2,6 +2,7 @@
 
 import csv
 import zipfile
+import enum
 
 TOLERANCE = 200 # microseconds
 
@@ -119,18 +120,104 @@ def decode_edges(edges):
 
     return codes
 
+class CodeLength(enum.Enum):
+    SHORT = enum.auto()
+    LONG = enum.auto()
+    START = enum.auto()
+    UNKNOWN = enum.auto()
+
+class State(enum.Enum):
+    RESET = enum.auto()
+    RECEIVED_LONG = enum.auto()
+    RECEIVED_SHORT = enum.auto()
+    READY_FOR_BIT = enum.auto()
+
+def alt_decode_edges(edges):
+    state = State.RESET
+    code_length = CodeLength.UNKNOWN
+    bit_count = 0
+    bit_data = 0
+    codes = []
+
+    old_time = 0.0
+    for (time, high) in edges:
+        if not high:
+            continue
+
+        units = (time - old_time) * 1e6
+        old_time = time
+        # 320 + 220 = 540 = short    8.4    7 .. 10
+        # 1330 + 220 = 1550 = long   24.2   22 .. 25
+        # 2700 + 220 = 2920 = start  45.6   44 .. 49
+        if 440 <= units <= 640:
+            code_length = CodeLength.SHORT
+        elif 1450 <= units <= 1650:
+            code_length = CodeLength.LONG
+        elif 2820 <= units <= 3020:
+            code_length = CodeLength.START
+        else:
+            code_length = CodeLength.UNKNOWN
+
+        if code_length == CodeLength.START:
+            state = State.READY_FOR_BIT
+            bit_count = 0
+            bit_data = 0
+        elif code_length == CodeLength.SHORT:
+            if state == State.READY_FOR_BIT:
+                # short
+                state = State.RECEIVED_SHORT
+            elif state == State.RECEIVED_LONG:
+                # long then short -> bit 1
+                bit_data = (bit_data << 1) | 1
+                bit_count += 1
+                if bit_count >= 32:
+                    codes.append(bit_data)
+                    state = State.RESET
+                else:
+                    state = State.READY_FOR_BIT
+            else:
+                # error
+                state = State.RESET
+        elif code_length == CodeLength.LONG:
+            if state == State.READY_FOR_BIT:
+                # long
+                state = State.RECEIVED_LONG
+            elif state == State.RECEIVED_SHORT:
+                # short then long -> bit 0
+                bit_data = (bit_data << 1) | 0
+                bit_count += 1
+                if bit_count >= 32:
+                    codes.append(bit_data)
+                    state = State.RESET
+                else:
+                    state = State.READY_FOR_BIT
+            else:
+                # error
+                state = State.RESET
+
+    return codes
+
 def main():
-    codes = decode_edges(read_edges_in_zip("he_433_tests.zip", "20230409-0001-office-off-04022b83.csv"))
-    assert set(codes) == set([0x04022b83])
-    codes = decode_edges(read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv"))
-    assert set(codes) == set([0x00ad6496])
+    edges1 = read_edges_in_zip("he_433_tests.zip", "20230409-0001-office-off-04022b83.csv")
+    edges2 = read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv")
+
+    codes11 = decode_edges(edges1)
+    codes12 = alt_decode_edges(edges1)
+    assert set(codes11) == set([0x04022b83])
+    assert set(codes12) == set([0x04022b83])
+    codes21 = decode_edges(edges2)
+    codes22 = alt_decode_edges(edges2)
+    assert set(codes21) == set([0x00ad6496])
+    assert set(codes22) == set([0x00ad6496])
+    assert len(codes12) >= len(codes11)
+    assert len(codes22) >= len(codes21)
     print("ok")
     #with zipfile.ZipFile("he_433_tests.zip") as zf:
     #edges = read_edges("20230409-0002-bed3-on-00ad6496.csv")
     #codes = decode_edges(edges)
     #print(codes)
-    edges = read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv")
-    debug(edges)
+    #edges = read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv")
+    #debug(edges)
 
 if __name__ == "__main__":
     main()

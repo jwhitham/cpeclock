@@ -1,0 +1,4 @@
+*.pyc
+*.o
+*.exe
+test_rx433.txt

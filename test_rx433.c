@@ -49,7 +49,7 @@ int main(void)
         fprintf(stderr, "incorrect results: %u %u\n", test1_count, test2_count);
         return 1;
     }
-    printf("ok\n");
+    printf("ok %u %u\n", test1_count, test2_count);
     return 0;
 }
 

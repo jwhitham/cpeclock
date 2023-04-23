@@ -211,6 +211,7 @@ def main():
     assert set(codes22) == set([0x00ad6496])
     assert len(codes12) >= len(codes11)
     assert len(codes22) >= len(codes21)
+    print("ok {} {}".format(len(codes12), len(codes22)))
     print("ok")
     #with zipfile.ZipFile("he_433_tests.zip") as zf:
     #edges = read_edges("20230409-0002-bed3-on-00ad6496.csv")

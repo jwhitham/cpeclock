@@ -37,7 +37,12 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
+#define VERSION             2
+#define MIN_CODE_LENGTH     32      // bits
+#define MAX_CODE_LENGTH     128     // bits
 
+#define MIN_HEX_DATA_SIZE ((((MIN_CODE_LENGTH / 8) * 2)) + 1)
+#define MAX_HEX_DATA_SIZE ((((MAX_CODE_LENGTH / 8) * 2)) + 1)
 
 // #define TX_PIN           24      // physical pin 18
 #define TX_PIN              26      // physical pin 37
@@ -63,14 +68,14 @@ static inline void OUT_GPIO(unsigned g)
 static inline void GPIO_SET(unsigned g)
 {
     // sets   bits which are 1 ignores bits which are 0
-    // #define GPIO_SET *(gpio+7)  
+    // #define GPIO_SET *(gpio+7)
     iowrite32(g, (void *) (gpio1 + (4 * 7)));
 }
 
 static inline void GPIO_CLR(unsigned g)
 {
     // clears bits which are 1 ignores bits which are 0
-    // #define GPIO_CLR *(gpio+10) 
+    // #define GPIO_CLR *(gpio+10)
     iowrite32(g, (void *) (gpio1 + (4 * 10)));
 }
 
@@ -91,49 +96,69 @@ static inline void await(unsigned us)
     while(micros() < await_timer) {}
 }
 
-static inline void send_high(void)
+static inline void send_high(unsigned us)
 {
     GPIO_SET(1 << TX_PIN);
-    await(220);
+    await(us);
     GPIO_CLR(1 << TX_PIN);
 }
 
-static inline void send_long(void)
-{
-    send_high(); 
-    await(1330);
-}
+typedef struct code_properties_s {
+    unsigned    high_time;
+    unsigned    start_low_time;
+    unsigned    short_low_time;
+    unsigned    long_low_time;
+    unsigned    finish_low_time;
+    unsigned    repeats;
+} code_properties_t;
 
-static inline void send_short(void)
-{
-    send_high(); 
-    await(320);
-}
 
-static unsigned transmit_code(unsigned tx_code, unsigned attempts)
+static const code_properties_t home_easy_properties = {
+    .high_time = 220,
+    .start_low_time = 2700,
+    .short_low_time = 320,
+    .long_low_time = 1330,
+    .finish_low_time = 10270,
+    .repeats = 5,
+};
+
+static unsigned transmit_code(
+        uint8_t* bytes,
+        size_t num_bytes,
+        const code_properties_t* cp)
 {
-    unsigned i, j, start, stop;
+    unsigned i, j, k, start, stop;
 
     do_gettimeofday(&initial);
     await_timer = start = micros();
-    for (i = 0; i < attempts; i++) {
-        send_high(); // Start code
-        await(2700);
-        j = 32;
-        while (j > 0) {
-            unsigned bits;
-            j --;
-            bits = (tx_code >> (unsigned) j) & 1;
-            if (bits) {
-                send_long();
-                send_short();
-            } else {
-                send_short();
-                send_long();
+    for (i = cp->repeats; i != 0; i--) {
+        // Send start code
+        send_high(cp->high_time);
+        await(cp->start_low_time);
+        for (j = 0; j < num_bytes; j++) {
+            uint8_t byte = bytes[j];
+            for (k = 0; k < 8; k++) {
+                if (byte & 0x80) {
+                    // Send 'one' bit
+                    send_high(cp->high_time);
+                    await(cp->long_low_time);
+                    send_high(cp->high_time);
+                    await(cp->short_low_time);
+                } else {
+                    // Send 'zero' bit
+                    send_high(cp->high_time);
+                    await(cp->short_low_time);
+                    send_high(cp->high_time);
+                    await(cp->long_low_time);
+                }
+                byte = byte << 1;
             }
         }
-        send_high(); // End code
-        await(10270); // Gap
+        // Send finish code
+        send_high(cp->high_time);
+        if (i != 0) {
+            await(cp->finish_low_time);
+        }
     }
     stop = micros();
     return stop - start;
@@ -152,33 +177,49 @@ static int tx433_release(struct inode *inode, struct file *file)
 static ssize_t tx433_write(struct file *file, const char __user *buf,
                 size_t count, loff_t *pos)
 {
-    long val = 0;
-    unsigned code = 0;
-    unsigned timing = 0;
-    char tmp[9];
+    char hex_data[MAX_HEX_DATA_SIZE];
+    uint8_t bytes[MAX_CODE_LENGTH / 8];
     unsigned long flags;
+    unsigned timing = 0;
+    size_t i;
 
-    if (count < 8) {
+    // The code provided to /dev/tx433 should be an even
+    // number of hexadecimal digits ending in '\n'
+    if ((count < MIN_HEX_DATA_SIZE)
+    || (count > MAX_HEX_DATA_SIZE)
+    || ((count & 1) == 0)) {
         return -EINVAL;
     }
 
-    if (copy_from_user(tmp, buf, 8)) {
+    if (copy_from_user(hex_data, buf, count)) {
         return -EFAULT;
     }
-    tmp[8] = '\0';
-    if (kstrtol(tmp, 16, &val) != 0) {
-        return -EINVAL;
-    }
-    code = val;
-    if ((code == 0) || (code >= (1 << 28))) {
+
+    // check for final '\n'
+    if (hex_data[count - 1] != '\n') {
         return -EINVAL;
     }
 
+    // convert each pair of hex digits to a byte
+    for (i = 0; i < (count - 1); i += 2) {
+        char save_next = hex_data[i + 2];
+        long val = 0;
+        hex_data[i + 2] = '\0';
+        if (kstrtol(&hex_data[i], 16, &val) != 0) {
+            return -EINVAL;
+        }
+        bytes[i / 2] = val;
+        hex_data[i + 2] = save_next;
+    }
     // ready for transmission
     local_irq_save(flags);
-    timing = transmit_code(code, 5);
+    timing = transmit_code(bytes, (unsigned) ((count - 1) / 2),
+                           &home_easy_properties);
     local_irq_restore(flags);
-    printk(KERN_ERR DEV_NAME ": send %08x took %u\n", code, timing);
+
+    // debug output
+    hex_data[count - 1] = '\0';
+    printk(KERN_ERR DEV_NAME ": send %s took %u\n", hex_data, timing);
     return count;
 }
 
@@ -231,7 +272,8 @@ static int __init tx433_init(void)
         return -ENXIO;
     }
     gpio1 = (uintptr_t) gpio;
-    printk(KERN_ERR DEV_NAME ": physical %p logical %p\n", (void *) physical, gpio);
+    printk(KERN_ERR DEV_NAME ": physical %p logical %p version %d\n",
+        (void *) physical, gpio, VERSION);
     misc_register(&tx433_misc_device);
     local_irq_save(flags);
     INP_GPIO(TX_PIN);

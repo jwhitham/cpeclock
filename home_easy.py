@@ -13,9 +13,10 @@ SEND_DELAY = 1.0
 
 from twisted.internet.protocol import DatagramProtocol # type: ignore
 from twisted.internet import reactor # type: ignore
-import time, os, sys, subprocess, typing, json, socket
+import time, os, sys, subprocess, typing, json, socket, shutil, tempfile
 import RPi.GPIO as GPIO  # type: ignore
 import urllib.request
+from pathlib import Path
 
 DEBUG = (os.getenv("HEDEBUG") == "HEDEBUG")
 
@@ -168,29 +169,29 @@ def main() -> None:
     os.chdir(ROOT)
 
     print ('Compile driver for TX433', flush=True)
-    subprocess.call(["/sbin/rmmod", "tx433"], stderr=subprocess.DEVNULL)
-    if 0 == subprocess.call(["/bin/cp", "-r", os.path.join(ROOT, "kernel"), "/tmp/tx433"]):
-        os.chdir("/tmp/tx433")
-        os.environ["PWD"] = os.getcwd()
-        if 0 == subprocess.call(["/usr/bin/make"]):
-            print('Add driver for TX433', flush=True)
-            if 0 != subprocess.call(["/sbin/insmod", "/tmp/tx433/tx433.ko"]):
-                print('Failed to load driver', flush=True)
-                sys.exit(1)
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "tx433"
+        subprocess.call(["/sbin/rmmod", "tx433"], stderr=subprocess.DEVNULL)
+        shutil.copytree(Path(ROOT) / "kernel", p)
+        os.environ["PWD"] = str(p)
+        if 0 != subprocess.call(["/usr/bin/make"], cwd=p):
+            print("Compilation failed", flush=True)
+            sys.exit(1)
+        if 0 != subprocess.call(["/sbin/insmod", str(p / "tx433.ko")], cwd=p):
+            print('Load failed', flush=True)
+            sys.exit(1)
 
-    os.chdir(ROOT)
+        print ("load settings from %s" % LIGHT_DATA_URL, flush=True)
+        all_light_data = get_all_light_data()
+        print ('%u known lights' % len(all_light_data))
 
-    print ("load settings from %s" % LIGHT_DATA_URL, flush=True)
-    all_light_data = get_all_light_data()
-    print ('%u known lights' % len(all_light_data))
+        print ("GPIO setup")
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setwarnings(False)
 
-    print ("GPIO setup")
-    GPIO.setmode(GPIO.BOARD)
-    GPIO.setwarnings(False)
-
-    print ("start server")
-    reactor.listenUDP(PORT, Server433())
-    reactor.run()
+        print ("start server")
+        reactor.listenUDP(PORT, Server433())
+        reactor.run()
 
 if __name__ == "__main__":
     main()

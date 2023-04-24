@@ -37,12 +37,12 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             2
-#define MIN_CODE_LENGTH     32      // bits
-#define MAX_CODE_LENGTH     128     // bits
+#define VERSION             3
+#define MIN_CODE_LENGTH     32      // bits for Home Easy
+#define MAX_CODE_LENGTH     128     // max bits for new codes
 
-#define MIN_HEX_DATA_SIZE ((((MIN_CODE_LENGTH / 8) * 2)) + 1)
-#define MAX_HEX_DATA_SIZE ((((MAX_CODE_LENGTH / 8) * 2)) + 1)
+#define MIN_HEX_DATA_SIZE ((((MIN_CODE_LENGTH / 8) * 2)) + 1)   // Home Easy
+#define MAX_HEX_DATA_SIZE ((((MAX_CODE_LENGTH / 8) * 2)) + 1)   // New codes
 
 // #define TX_PIN           24      // physical pin 18
 #define TX_PIN              26      // physical pin 37
@@ -122,6 +122,15 @@ static const code_properties_t home_easy_properties = {
     .repeats = 5,
 };
 
+static const code_properties_t new_code_properties = {
+    .high_time =       0x080,
+    .start_low_time =  0x380,
+    .short_low_time =  0x080,
+    .long_low_time =   0x100,
+    .finish_low_time = 0xf80,
+    .repeats = 3,
+};
+
 static unsigned transmit_code(
         uint8_t* bytes,
         size_t num_bytes,
@@ -178,7 +187,7 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
                 size_t count, loff_t *pos)
 {
     char hex_data[MAX_HEX_DATA_SIZE];
-    uint8_t bytes[MAX_CODE_LENGTH / 8];
+    uint8_t bytes[MAX_HEX_DATA_SIZE / 2];
     unsigned long flags;
     unsigned timing = 0;
     size_t i;
@@ -213,8 +222,15 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
     }
     // ready for transmission
     local_irq_save(flags);
-    timing = transmit_code(bytes, (unsigned) ((count - 1) / 2),
-                           &home_easy_properties);
+    if (count == MIN_HEX_DATA_SIZE) {
+        // 32-bit codes use the Home Easy protocol
+        timing = transmit_code(bytes, (unsigned) ((count - 1) / 2),
+                               &home_easy_properties);
+    } else {
+        // Longer codes use the new code protocol
+        timing = transmit_code(bytes, (unsigned) ((count - 1) / 2),
+                               &new_code_properties);
+    }
     local_irq_restore(flags);
 
     // debug output

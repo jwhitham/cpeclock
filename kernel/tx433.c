@@ -176,7 +176,7 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
 
     // ready for transmission
     local_irq_save(flags);
-    timing = transmit_code(code, 10);
+    timing = transmit_code(code, 5);
     local_irq_restore(flags);
     printk(KERN_ERR DEV_NAME ": send %08x took %u\n", code, timing);
     return count;

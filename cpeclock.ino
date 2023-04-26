@@ -29,7 +29,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 RTC_DS1307 rtc;     // RTC address 0x68
 
 extern "C" {
-    volatile extern uint32_t rx433_data;
+    volatile extern uint32_t rx433_data[];
     volatile extern uint32_t rx433_count;
     extern void rx433_interrupt(void);
 }
@@ -141,14 +141,13 @@ void collect_rx433_messages(void)
 {
     // Any new messages received?
     noInterrupts();
-    if (rx433_data) {
-        if (copy_rx433_data == rx433_data) {
-            copy_rx433_count += rx433_count;
+    if (rx433_count) {
+        if (copy_rx433_data == rx433_data[0]) {
+            copy_rx433_count ++;
         } else {
-            copy_rx433_data = rx433_data;
-            copy_rx433_count = rx433_count;
+            copy_rx433_data = rx433_data[0];
+            copy_rx433_count = 1;
         }
-        rx433_data = 0;
         rx433_count = 0;
         copy_countdown = 3;
     }
@@ -192,6 +191,8 @@ void loop()
     if (copy_countdown) {
         snprintf(tmp, sizeof(tmp), "%08x %u", copy_rx433_data, copy_rx433_count);
         display.println(tmp);
+    } else {
+        copy_rx433_count = 0;
     }
     display.setFont(&FreeSans12pt7b);
     snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());

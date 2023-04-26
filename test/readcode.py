@@ -6,16 +6,16 @@ import enum
 
 TOLERANCE = 200 # microseconds
 
-def read_edges(filename):
+def read_edges(filename, scale_time):
     with open(filename, "rt", newline="") as fd:
-        return parse_csv(csv.reader(fd))
+        return parse_csv(csv.reader(fd), scale_time)
 
-def read_edges_in_zip(zip_filename, rec_filename):
+def read_edges_in_zip(zip_filename, rec_filename, scale_time):
     with zipfile.ZipFile(zip_filename) as zf:
         with zf.open(rec_filename, "r") as fd:
-            return parse_csv(csv.reader(fd.read().decode("ascii").splitlines()))
+            return parse_csv(csv.reader(fd.read().decode("ascii").splitlines()), scale_time)
 
-def parse_csv(rows):
+def parse_csv(rows, scale_time):
     for (i, _) in enumerate(rows):
         if i >= 2:
             break
@@ -26,11 +26,11 @@ def parse_csv(rows):
     for row in rows:
         voltage = float(row[1])
         if low and (voltage > 1.6):
-            time = float(row[0])
+            time = float(row[0]) * scale_time
             edges.append((time, True))
             low = False
         elif (not low) and (voltage < 1.0):
-            time = float(row[0])
+            time = float(row[0]) * scale_time
             edges.append((time, False))
             low = True
 
@@ -198,8 +198,8 @@ def alt_decode_edges(edges):
     return codes
 
 def main():
-    edges1 = read_edges_in_zip("he_433_tests.zip", "20230409-0001-office-off-04022b83.csv")
-    edges2 = read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv")
+    edges1 = read_edges_in_zip("he_433_tests.zip", "20230409-0001-office-off-04022b83.csv", 1.0)
+    edges2 = read_edges_in_zip("he_433_tests.zip", "20230409-0002-bed3-on-00ad6496.csv", 1.0)
 
     codes11 = decode_edges(edges1)
     codes12 = alt_decode_edges(edges1)

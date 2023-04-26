@@ -37,9 +37,9 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             4
+#define VERSION             5
 #define MIN_CODE_LENGTH     32      // bits for Home Easy
-#define MAX_CODE_LENGTH     128     // max bits for new codes
+#define MAX_CODE_LENGTH     256     // max bits for new codes
 
 #define MIN_HEX_DATA_SIZE ((((MIN_CODE_LENGTH / 8) * 2)) + 1)   // Home Easy
 #define MAX_HEX_DATA_SIZE ((((MAX_CODE_LENGTH / 8) * 2)) + 1)   // New codes

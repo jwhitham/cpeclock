@@ -124,10 +124,10 @@ static const code_properties_t home_easy_properties = {
 
 static const code_properties_t new_code_properties = {
     .high_time =       0x080,
-    .start_low_time =  0x380,
+    .start_low_time =  0x300,
     .short_low_time =  0x080,
-    .long_low_time =   0x100,
-    .finish_low_time = 0xf80,
+    .long_low_time =   0x180,
+    .finish_low_time = 0x400,
     .repeats = 3,
 };
 
@@ -165,9 +165,7 @@ static unsigned transmit_code(
         }
         // Send finish code
         send_high(cp->high_time);
-        if (i != 0) {
-            await(cp->finish_low_time);
-        }
+        await(cp->finish_low_time);
     }
     stop = micros();
     return stop - start;

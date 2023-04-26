@@ -37,7 +37,7 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             3
+#define VERSION             4
 #define MIN_CODE_LENGTH     32      // bits for Home Easy
 #define MAX_CODE_LENGTH     128     // max bits for new codes
 
@@ -109,6 +109,7 @@ typedef struct code_properties_s {
     unsigned    short_low_time;
     unsigned    long_low_time;
     unsigned    finish_low_time;
+    unsigned    final;
     unsigned    repeats;
 } code_properties_t;
 
@@ -119,15 +120,17 @@ static const code_properties_t home_easy_properties = {
     .short_low_time = 320,
     .long_low_time = 1330,
     .finish_low_time = 10270,
+    .final = 0,
     .repeats = 5,
 };
 
 static const code_properties_t new_code_properties = {
     .high_time =       0x080,
-    .start_low_time =  0x300,
-    .short_low_time =  0x080,
-    .long_low_time =   0x180,
     .finish_low_time = 0x400,
+    .start_low_time =  0x300,
+    .long_low_time =   0x180,
+    .short_low_time =  0x080,
+    .final = 1,
     .repeats = 3,
 };
 
@@ -166,6 +169,11 @@ static unsigned transmit_code(
         // Send finish code
         send_high(cp->high_time);
         await(cp->finish_low_time);
+    }
+    if (cp->final) {
+        // Final code to mark the end of transmission
+        send_high(cp->high_time);
+        await(cp->short_low_time);
     }
     stop = micros();
     return stop - start;

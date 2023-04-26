@@ -21,6 +21,8 @@ int main(void)
     unsigned test1_count = 0;
     unsigned test2_count = 0;
     unsigned test3_count = 0;
+    unsigned test4_count = 0;
+    unsigned test5_count = 0;
     unsigned expect_count = 0;
 
     fd = fopen("test_rx433.txt", "rt");
@@ -57,6 +59,26 @@ int main(void)
                 test3_count ++;
                 printf("%d 3\n", test_time);
                 break;
+            case 0xe59ff979:
+                expect_count = 64;
+                if (rx433_data[1] != 0x41044f85) {
+                    fprintf(stderr, "partially invalid code received: %08x\n", rx433_data[0]);
+                    return 1;
+                }
+                test4_count ++;
+                printf("%d 4\n", test_time);
+                break;
+            case 0x2cad20c1:
+                expect_count = 128;
+                if (!((rx433_data[1] == 0x9a8eb9bb)
+                && (rx433_data[2] == 0x11a9f765)
+                && (rx433_data[3] == 0x27aec9bc))) {
+                    fprintf(stderr, "partially invalid code received: %08x\n", rx433_data[0]);
+                    return 1;
+                }
+                test5_count ++;
+                printf("%d 5\n", test_time);
+                break;
             default:
                 fprintf(stderr, "invalid code received: %08x\n", rx433_data[0]);
                 return 1;
@@ -70,14 +92,19 @@ int main(void)
     if ((test1_count < 15)
     || (test2_count < 15)
     || (test3_count < 1)
+    || (test4_count < 8)
+    || (test5_count < 3)
     || (test1_count > 20)
     || (test2_count > 20)
-    || (test3_count > 15)) {
-        fprintf(stderr, "incorrect results: %u %u %u\n",
-                    test1_count, test2_count, test3_count);
+    || (test3_count > 5)
+    || (test4_count > 10)
+    || (test5_count > 5)) {
+        fprintf(stderr, "incorrect results: %u %u %u %u %u\n",
+                    test1_count, test2_count, test3_count, test4_count, test5_count);
         return 1;
     }
-    printf("ok %u %u %u\n", test1_count, test2_count, test3_count);
+    printf("ok %u %u %u %u %u\n", test1_count, test2_count,
+                test3_count, test4_count, test5_count);
     return 0;
 }
 

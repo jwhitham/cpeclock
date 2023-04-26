@@ -4,7 +4,8 @@
 #include <stdlib.h>
 
 uint32_t test_time = 0;
-extern uint32_t rx433_data;
+extern uint32_t rx433_data[];
+extern uint32_t rx433_count;
 extern void rx433_interrupt(void);
 
 uint32_t micros()
@@ -25,9 +26,19 @@ int main(void)
         return 1;
     }
     while (fscanf(fd, "%x\n", &test_time) == 1) {
-        rx433_data = 0;
+        rx433_data[0] = 0;
+        rx433_data[1] = 0;
+        rx433_count = 0;
         rx433_interrupt();
-        switch(rx433_data) {
+        switch(rx433_count) {
+            case 0:
+            case 32:
+                break;
+            default:
+                fprintf(stderr, "invalid count received: %d\n", rx433_count);
+                return 1;
+        }
+        switch(rx433_data[0]) {
             case 0:
                 break;
             case 0x4022b83:
@@ -39,7 +50,7 @@ int main(void)
                 printf("%d 2\n", test_time);
                 break;
             default:
-                fprintf(stderr, "invalid code received: %08x\n", rx433_data);
+                fprintf(stderr, "invalid code received: %08x\n", rx433_data[0]);
                 return 1;
         }
     }

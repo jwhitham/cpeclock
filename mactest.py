@@ -173,3 +173,16 @@ def test_save_load():
     assert p2 == b"Y"
     assert m1.save() == m2.save()
 
+def main():
+    with open("test_mac.bin", "wb") as fd:
+        m = MAC(b"secret")
+        for i in range(300):
+            packet = "message {}".format(i).encode("ascii")
+            data = m.encode_packet(packet)
+            fd.write(struct.pack("<B", len(data)))
+            fd.write(data)
+
+
+if __name__ == "__main__":
+    main()
+

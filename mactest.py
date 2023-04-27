@@ -1,5 +1,6 @@
 
 import hashlib
+import hmac
 import struct
 import typing
 
@@ -7,11 +8,14 @@ MAX_STORE_SIZE = 0x100
 
 class MAC:
     def __init__(self, secret_data: bytes) -> None:
-        self.secret_data = secret_data
+        self.secret_data = secret_data[:32]
+        while len(self.secret_data) < 32:
+            self.secret_data += b"\x00"
+            
         self.lower_index = 0
         self.upper_index = 1
         self.value_store = [b"" for i in range(MAX_STORE_SIZE)]
-        self.value_store[self.lower_index % MAX_STORE_SIZE] = secret_data
+        self.value_store[self.lower_index % MAX_STORE_SIZE] = self.secret_data
 
     def save(self) -> bytes:
         index_byte = struct.pack("<B", self.lower_index & 0xff)
@@ -57,12 +61,10 @@ class MAC:
 
         index_byte = struct.pack("<B", index & 0xff)
 
-        s = hashlib.sha256()
-        s.update(payload)
-        s.update(index_byte)
-        assert self.value_store[index % MAX_STORE_SIZE] != b""
-        s.update(self.value_store[index % MAX_STORE_SIZE])
-        mac_bytes = s.digest()[:7]
+        mac_bytes = hmac.digest(
+                key=self.value_store[index % MAX_STORE_SIZE],
+                msg=payload + index_byte,
+                digest='sha256')[:7]
 
         self.cancel_index(index)
         output = payload + index_byte + mac_bytes
@@ -83,13 +85,10 @@ class MAC:
             assert self.get_store_size() < MAX_STORE_SIZE
             self.refill_one()
 
-        s = hashlib.sha256()
-        s.update(payload)
-        s.update(index_byte)
-        assert self.value_store[index % MAX_STORE_SIZE] != b""
-        s.update(self.value_store[index % MAX_STORE_SIZE])
-
-        if mac_bytes == s.digest()[:7]:
+        if mac_bytes == hmac.digest(
+                key=self.value_store[index % MAX_STORE_SIZE],
+                msg=payload + index_byte,
+                digest='sha256')[:7]:
             # accepted - cancel used or skipped keys
             self.cancel_index(index)
             return payload

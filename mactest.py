@@ -10,33 +10,34 @@ class MAC:
         self.secret_data = secret_data
         self.lower_index = 0
         self.upper_index = 1
-        self.value_store = dict()
-        self.value_store[self.lower_index] = secret_data
+        self.value_store = [b"" for i in range(MAX_STORE_SIZE)]
+        self.value_store[self.lower_index % MAX_STORE_SIZE] = secret_data
 
     def save(self) -> bytes:
         index_byte = struct.pack("<B", self.lower_index & 0xff)
-        state = self.value_store[self.lower_index] + index_byte
+        state = self.value_store[self.lower_index % MAX_STORE_SIZE] + index_byte
         return state
 
     def restore(self, state: bytes) -> None:
         (partial_index, ) = struct.unpack("<B", state[-1:])
         self.lower_index = partial_index
-        self.upper_index = partial_index +1
-        self.value_store.clear()
-        self.value_store[self.lower_index] = state[:-1]
+        self.upper_index = partial_index + 1
+        self.value_store = [b"" for i in range(MAX_STORE_SIZE)]
+        self.value_store[self.lower_index % MAX_STORE_SIZE] = state[:-1]
+
+    def get_store_size(self) -> int:
+        return self.upper_index - self.lower_index
 
     def refill_one(self) -> None:
-        assert len(self.value_store) == (self.upper_index - self.lower_index)
-        assert len(self.value_store) > 0
-        if len(self.value_store) < MAX_STORE_SIZE:
+        if self.get_store_size() < MAX_STORE_SIZE:
             s = hashlib.sha256()
-            s.update(self.value_store[self.upper_index - 1])
+            s.update(self.value_store[(self.upper_index - 1) % MAX_STORE_SIZE])
             s.update(self.secret_data)
-            self.value_store[self.upper_index] = s.digest()
+            self.value_store[self.upper_index % MAX_STORE_SIZE] = s.digest()
             self.upper_index += 1
 
     def refill_all(self) -> None:
-        while len(self.value_store) < MAX_STORE_SIZE:
+        while self.get_store_size() < MAX_STORE_SIZE:
             self.refill_one()
 
     def cancel_index(self, index: int) -> None:
@@ -48,10 +49,8 @@ class MAC:
                 # store is about to become empty - ensure this does not happen
                 self.refill_one()
 
-            del self.value_store[self.lower_index]
+            self.value_store[self.lower_index % MAX_STORE_SIZE] = b""
             self.lower_index += 1
-            assert len(self.value_store) == (self.upper_index - self.lower_index)
-            assert len(self.value_store) > 0
 
     def encode_packet(self, payload: bytes) -> bytes:
         index = self.lower_index
@@ -61,7 +60,8 @@ class MAC:
         s = hashlib.sha256()
         s.update(payload)
         s.update(index_byte)
-        s.update(self.value_store[index])
+        assert self.value_store[index % MAX_STORE_SIZE] != b""
+        s.update(self.value_store[index % MAX_STORE_SIZE])
         mac_bytes = s.digest()[:7]
 
         self.cancel_index(index)
@@ -80,13 +80,14 @@ class MAC:
             index += 0x100
 
         while index >= self.upper_index:
-            assert len(self.value_store) < MAX_STORE_SIZE
+            assert self.get_store_size() < MAX_STORE_SIZE
             self.refill_one()
 
         s = hashlib.sha256()
         s.update(payload)
         s.update(index_byte)
-        s.update(self.value_store[index])
+        assert self.value_store[index % MAX_STORE_SIZE] != b""
+        s.update(self.value_store[index % MAX_STORE_SIZE])
 
         if mac_bytes == s.digest()[:7]:
             # accepted - cancel used or skipped keys

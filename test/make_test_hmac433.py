@@ -9,19 +9,19 @@ MAX_STORE_SIZE = 0x100
 class MAC:
     def __init__(self, secret_data: bytes) -> None:
         self.secret_data = secret_data
-        self.lower_index = 0
+        self.counter = 0
 
     def save(self) -> bytes:
-        return struct.pack("<Q", self.lower_index)
+        return struct.pack("<Q", self.counter)
 
     def restore(self, state: bytes) -> None:
-        (self.lower_index, ) = struct.unpack("<Q", state)
+        (self.counter, ) = struct.unpack("<Q", state)
 
     def get_key_for_index(self, index: int) -> bytes:
         return self.secret_data + struct.pack("<Q", index)
 
     def encode_packet(self, payload: bytes) -> bytes:
-        index = self.lower_index
+        index = self.counter
 
         index_byte = struct.pack("<B", index & 0xff)
 
@@ -30,7 +30,7 @@ class MAC:
                 msg=payload + index_byte,
                 digest='sha256')[:7]
 
-        self.lower_index = index + 1
+        self.counter = index + 1
         output = payload + index_byte + mac_bytes
         return output
 
@@ -41,8 +41,8 @@ class MAC:
         payload = packet[:-8]
 
         (partial_index, ) = struct.unpack("<B", index_byte)
-        index = (self.lower_index & ~0xff) | partial_index
-        if index < self.lower_index:
+        index = (self.counter & ~0xff) | partial_index
+        if index < self.counter:
             index += 0x100
 
         if mac_bytes == hmac.digest(
@@ -50,7 +50,7 @@ class MAC:
                 msg=payload + index_byte,
                 digest='sha256')[:7]:
             # accepted - cancel used or skipped keys
-            self.lower_index = index + 1
+            self.counter = index + 1
             return payload
 
         else:
@@ -158,29 +158,76 @@ def test_save_load():
         p2 = m2.encode_packet(struct.pack("<I", i))
         assert p == p2
         assert m1.save() == m2.save()
-        assert m1.lower_index == m2.lower_index
+        assert m1.counter == m2.counter
 
     for i in range(10):
         p = m1.encode_packet(struct.pack("<I", i))
         p2 = m2.encode_packet(b"X")
         assert p != p2
         assert m1.save() == m2.save()
-        assert m1.lower_index == m2.lower_index
+        assert m1.counter == m2.counter
 
     p = m1.encode_packet(b"Y")
     p2 = m2.decode_packet(p)
-    assert m1.lower_index == m2.lower_index
+    assert m1.counter == m2.counter
     assert p2 == b"Y"
     assert m1.save() == m2.save()
+
+def store_message(fd: typing.IO, data: bytes, expect_authentic: bool,
+                  counter_jump=False) -> None:
+    action = 0
+    if expect_authentic:
+        action |= 1
+    if counter_jump:
+        action |= 2
+    fd.write(struct.pack("<BB", len(data), action))
+    fd.write(data)
 
 def main():
     with open("test_hmac433.bin", "wb") as fd:
         m = MAC(b"secret")
+        # Authentic messages
         for i in range(300):
             packet = "message {}".format(i).encode("ascii")
             data = m.encode_packet(packet)
-            fd.write(struct.pack("<B", len(data)))
-            fd.write(data)
+            store_message(fd, data, True)
+        # Corrupt message
+        packet = "hello".encode("ascii")
+        data = m.encode_packet(packet)
+        data = b"H" + data[1:]
+        store_message(fd, data, False)
+        # Bad counter
+        m.counter += 0x100
+        data = m.encode_packet(packet)
+        store_message(fd, data, False)
+        m.counter -= 0x100
+        # Good counter
+        data = m.encode_packet(packet)
+        store_message(fd, data, True)
+        # Good counter jumps forward
+        for i in range(5):
+            packet = "jump {}".format(i).encode("ascii")
+            m.counter += 0xff
+            data = m.encode_packet(packet)
+            store_message(fd, data, True)
+        # Replay
+        store_message(fd, data, False)
+        packet = "replay".encode("ascii")
+        data = m.encode_packet(packet)
+        store_message(fd, data, True)
+        store_message(fd, data, False)
+        # The distant future.. the year 2000...
+        m.counter += 1 << 60
+        for i in range(5):
+            packet = "future {}".format(i).encode("ascii")
+            data = m.encode_packet(packet)
+            store_message(fd, data, True, counter_jump=(i == 0))
+
+        m.counter += 1 << 60
+        packet = "final".format(i).encode("ascii")
+        data = m.encode_packet(packet)
+        store_message(fd, data, False)
+        store_message(fd, data, True, counter_jump=True)
 
 
 if __name__ == "__main__":

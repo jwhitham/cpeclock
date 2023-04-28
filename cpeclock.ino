@@ -9,6 +9,9 @@
 
 #define EEPROM_ADDRESS 0x50
 
+#include "rx433.h"
+#include "mail.h"
+#include "hal.h"
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -28,23 +31,22 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 RTC_DS1307 rtc;     // RTC address 0x68
 
-extern "C" {
-    volatile extern uint32_t rx433_data[];
-    volatile extern uint32_t rx433_count;
-    extern void rx433_interrupt(void);
-}
-
 void setup()
 {
     CircuitPlayground.begin();
     
     Wire.begin();
     Wire1.begin();
-    Serial.begin(9600);
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(RX433_PIN, INPUT_PULLUP);
     digitalWrite(LED_BUILTIN, HIGH);
-    Serial.println("Boot " __DATE__);
+
+    while (!Serial) {
+        delay(10);
+    }
+    Serial.begin(9600);
+    const char* boot = "Build date " __DATE__;
+    Serial.println(boot);
     Serial.flush();
 
     if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -53,18 +55,12 @@ void setup()
         for(;;);
     }
     display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setFont(&FreeSans12pt7b);
-    display.setCursor(0, LINE_1_Y);
-    display.println("Boot");
-    display.setCursor(0, LINE_2_Y);
-    display.println(__DATE__);
-    display.display();
+    display_message(boot);
 
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
         Serial.flush();
+        display_message("RTC ERROR 1");
         for(;;);
     }
     if (!rtc.isrunning()) {
@@ -72,19 +68,51 @@ void setup()
         rtc.adjust(DateTime(2012, 4, 14, 12, 0, 0));
         if (! rtc.isrunning()) {
             Serial.println("RTC is still NOT running despite an attempt to start it");
+            display_message("RTC ERROR 2");
             for(;;);
         }
     }
     attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
-    for (uint8_t i = 0; i < NVRAM_SIZE; i++) {
-        rtc.writenvram(i, i ^ KEY);
+    if (!mail_init()) {
+        Serial.println("mail_init() failed");
+        Serial.flush();
+        for(;;);
     }
+
     digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("OK");
+    Serial.println("Booted");
     Serial.flush();
-    delay(100);
-    display.clearDisplay();
+}
+
+uint8_t nvram_read(uint8_t addr)
+{
+    return rtc.readnvram(addr);
+}
+
+void nvram_write(uint8_t addr, uint8_t data)
+{
+    rtc.writenvram(addr, data);
+}
+
+void disable_interrupts(void)
+{
+    noInterrupts();
+}
+
+void enable_interrupts(void)
+{
+    interrupts();
+}
+
+void display_message(const char* msg)
+{
+    display.fillRect(0, 0, SCREEN_WIDTH, BLUE_AREA_Y, 0);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(0, BLUE_AREA_Y - 1);
+    display.println(msg);
     display.display();
 }
 
@@ -130,59 +158,6 @@ void eeprom_write(uint16_t address, uint8_t value)
 	delay(10);
 }
 
-static uint16_t errors = 0;
-static uint16_t tests = 0;
-static uint32_t copy_rx433_data = 0;
-static uint32_t copy_rx433_count = 0;
-static uint32_t copy_countdown = 0;
-
-
-void collect_rx433_messages(void)
-{
-    // Any new messages received?
-    noInterrupts();
-    if (rx433_count) {
-        if (copy_rx433_data == rx433_data[0]) {
-            copy_rx433_count ++;
-        } else {
-            copy_rx433_data = rx433_data[0];
-            copy_rx433_count = 1;
-        }
-        rx433_count = 0;
-        copy_countdown = 3;
-    }
-    interrupts();
-}
-
-extern "C" {
-#include "sha256.h"
-}
-
-static void sha_test(char* tmp, size_t size)
-{
-    SHA256_CTX ctx;
-    BYTE hash[32];
-    size_t i;
-    uint32_t test = 0x41424344;
-    // in memory: 0x44 has the lowest address i.e. little endian
-
-    i = 0;
-    memset(hash, 0, sizeof(hash));
-    memset(tmp, 0, size);
-    memcpy(hash, &test, 4);
-    /*sha256_init(&ctx);
-    sha256_update(&ctx, (const BYTE *) tmp, 4);
-    sha256_final(&ctx, hash); */
-    while((size >= 3) && (i < sizeof(hash)) && (i <= 5)) {
-        snprintf(tmp, 3, "%02x", hash[i]);
-        i++;
-        size -= 2;
-        tmp += 2;
-    }
-}
-
-
-
 
 void loop()
 {
@@ -191,47 +166,24 @@ void loop()
     // Wait for RTC to advance
     DateTime now = rtc.now();
     uint8_t save = now.second();
-    uint16_t cycles = 0;
     do {
         now = rtc.now();
         uint8_t expect = (save + 1) % 60;
-        uint8_t i = tests % NVRAM_SIZE;
-        if (((now.second() != expect) && (now.second() != save))
-        || (now.year() != 2012)
-        || (now.month() != 4)
-        || ((rtc.readnvram(i) ^ KEY) != i)) {
-            errors ++;
+        if ((now.second() != expect) && (now.second() != save)) {
             break;
         }
-        collect_rx433_messages();
-        tests ++;
-        cycles ++;
+        mail_receive_messages();
     } while (save == now.second());
 
     digitalWrite(LED_BUILTIN, HIGH);
 
-    if (copy_countdown) {
-        copy_countdown --;
-    }
-
     // Redraw display
-    display.clearDisplay();
-    display.setFont(&FreeSans9pt7b);
-    display.setCursor(0, BLUE_AREA_Y - 1);
-    if (copy_countdown) {
-        snprintf(tmp, sizeof(tmp), "%08x %u", (unsigned) copy_rx433_data, (unsigned) copy_rx433_count);
-        display.println(tmp);
-    } else {
-        sha_test(tmp, sizeof(tmp));
-        display.println(tmp);
-        copy_rx433_count = 0;
-    }
+    display.fillRect(0, BLUE_AREA_Y, SCREEN_WIDTH, SCREEN_HEIGHT - BLUE_AREA_Y, 0);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
     display.setFont(&FreeSans12pt7b);
     snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
     display.setCursor(0, LINE_1_Y);
-    display.println(tmp);
-    snprintf(tmp, sizeof(tmp), "%04x %04x", errors, tests);
-    display.setCursor(0, LINE_2_Y);
     display.println(tmp);
     display.display();
 

@@ -6,6 +6,7 @@
 extern "C" {
 #endif
 
+#include <stdio.h>
 #include <stdint.h>
 
 #define HMAC_DIGEST_SIZE     32

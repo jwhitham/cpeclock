@@ -1,11 +1,8 @@
 
-#include <stdint.h>
+#include "rx433.h"
 
 
 extern uint32_t micros();
-
-#define MIN_CODE_LENGTH     32      // bits for Home Easy
-#define MAX_CODE_LENGTH     128     // max bits for new codes
 
 volatile uint32_t rx433_data[MAX_CODE_LENGTH / 32] = {0};
 volatile uint32_t rx433_count = 0;

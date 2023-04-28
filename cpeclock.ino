@@ -154,6 +154,36 @@ void collect_rx433_messages(void)
     interrupts();
 }
 
+extern "C" {
+#include "sha256.h"
+}
+
+static void sha_test(char* tmp, size_t size)
+{
+    SHA256_CTX ctx;
+    BYTE hash[32];
+    size_t i;
+    uint32_t test = 0x41424344;
+    // in memory: 0x44 has the lowest address i.e. little endian
+
+    i = 0;
+    memset(hash, 0, sizeof(hash));
+    memset(tmp, 0, size);
+    memcpy(hash, &test, 4);
+    /*sha256_init(&ctx);
+    sha256_update(&ctx, (const BYTE *) tmp, 4);
+    sha256_final(&ctx, hash); */
+    while((size >= 3) && (i < sizeof(hash)) && (i <= 5)) {
+        snprintf(tmp, 3, "%02x", hash[i]);
+        i++;
+        size -= 2;
+        tmp += 2;
+    }
+}
+
+
+
+
 void loop()
 {
     char tmp[16];
@@ -189,9 +219,11 @@ void loop()
     display.setFont(&FreeSans9pt7b);
     display.setCursor(0, BLUE_AREA_Y - 1);
     if (copy_countdown) {
-        snprintf(tmp, sizeof(tmp), "%08x %u", copy_rx433_data, copy_rx433_count);
+        snprintf(tmp, sizeof(tmp), "%08x %u", (unsigned) copy_rx433_data, (unsigned) copy_rx433_count);
         display.println(tmp);
     } else {
+        sha_test(tmp, sizeof(tmp));
+        display.println(tmp);
         copy_rx433_count = 0;
     }
     display.setFont(&FreeSans12pt7b);

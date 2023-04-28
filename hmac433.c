@@ -4,11 +4,6 @@
 #include "hmac433.h"
 #include "hmac.h"
 
-typedef struct key_data_s {
-    uint8_t secret_data[BLOCK_SIZE - 8];
-    uint64_t new_counter;
-} key_data_t;
-
 
 int hmac433_authenticate(
         const uint8_t* secret_data,
@@ -17,28 +12,26 @@ int hmac433_authenticate(
         size_t packet_size,
         uint64_t* counter)
 {
-    uint8_t digest_data[DIGEST_SIZE];
-    key_data_t key_data;
+    uint8_t digest_data[HMAC_DIGEST_SIZE];
+    uint64_t new_counter;
 
     if (packet_size <= 8) {
         // too short
         return 0;
     }
-    if (secret_size > (BLOCK_SIZE - 8)) {
-        secret_size = BLOCK_SIZE - 8;
+    if (secret_size > (HMAC_BLOCK_SIZE - 8)) {
+        secret_size = HMAC_BLOCK_SIZE - 8;
     }
-
-    // prepare the key
-    memset(&key_data, 0, sizeof(key_data_t));
-    memcpy(key_data.secret_data, secret_data, secret_size);
 
     // update counter
-    key_data.new_counter = ((*counter) & ~((uint64_t) 0xff)) | (uint64_t) packet_data[packet_size - 8];
-    if (key_data.new_counter < (*counter)) {
-        key_data.new_counter += 0x100;
+    new_counter = ((*counter) & ~((uint64_t) 0xff)) | (uint64_t) packet_data[packet_size - 8];
+    if (new_counter < (*counter)) {
+        new_counter += 0x100;
     }
 
-    hmac_sha256((const uint8_t *) &key_data, BLOCK_SIZE,
+    // compute HMAC
+    hmac_sha256(secret_data, secret_size,
+                &new_counter,
                 packet_data, packet_size - 7,
                 digest_data);
 
@@ -47,7 +40,7 @@ int hmac433_authenticate(
         return 0;
     }
     // message ok
-    (* counter) = key_data.new_counter + 1;
+    (* counter) = new_counter + 1;
     return 1;
 }
 

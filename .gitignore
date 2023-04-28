@@ -2,4 +2,4 @@
 *.o
 *.exe
 test_rx433.txt
-test_mac.bin
+test_hmac433.bin

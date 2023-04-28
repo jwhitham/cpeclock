@@ -2,7 +2,7 @@
 
 CFLAGS=-I.. -Wall -g
 
-test: test_rx433.exe test_hmac433.exe
+test: test_rx433.exe test_hmac433.exe test_rx433.txt test_hmac433.bin
 	./test_rx433.exe
 	./test_hmac433.exe
 

@@ -19,6 +19,7 @@ void hmac_sha256(
         size_t message_size,
         uint8_t* digest_data);
 
+
 #ifdef __cplusplus
 }
 #endif

@@ -75,6 +75,7 @@ void mail_receive_messages(void)
     size_t msg_count_bits = 0;
     size_t msg_count_bytes = 0;
     size_t i;
+    const uint8_t* ref = "\x4D\x68\x65\x6C\x6C\x6F\x20\x77\x6F\x72\x6C\x64\x03\x4E\x06\x69\x10\x1E\x7C\x1E";
 
     // critical section to obtain any new messages
     disable_interrupts();
@@ -97,18 +98,20 @@ void mail_receive_messages(void)
         return;
     }
 
-    if (msg_count_bits > 0) {
-        char tmp[16];
-        snprintf(tmp, sizeof(tmp), "m %d %08lx%08lx",
-                    msg_count_bits, (unsigned long) msg_data_words[0],
-                    (unsigned long) msg_data_words[1]);
-        display_message(tmp);
-    }
     if (msg_count_bits < 72) {
         // minimum length of HMAC message is 72 bits (64 bits for HMAC code and counter)
         return;
     }
     msg_count_bytes = (msg_count_bits + 7) / 8;
+    for (i = 0; i < msg_count_bytes; i++) {
+        if (msg_data_bytes[i] != ref[i]) {
+            char tmp[32];
+            snprintf(tmp, sizeof(tmp), "%d %02x != %02x", i, msg_data_bytes[i], ref[i]);
+            display_message(tmp);
+            return;
+        }
+    }
+    hmac_message_counter = 1;
 
     if (!hmac433_authenticate(
                 SECRET_DATA, SECRET_SIZE,
@@ -120,7 +123,9 @@ void mail_receive_messages(void)
             // so most likely, this is just a repeat of the last message,
             // rather than a deliberate replay attack.
         } else {
-            display_message("HMAC ERROR");
+            char tmp[16];
+            snprintf(tmp, sizeof(tmp), "%08lx", (unsigned long) hmac_message_counter);
+            display_message(tmp);
             previous_counter = 0x100;
         }
         return;

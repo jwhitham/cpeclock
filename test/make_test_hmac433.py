@@ -1,61 +1,10 @@
 
-import hashlib
-import hmac
 import struct
 import typing
+import pytest
+import sys
 
-MAX_STORE_SIZE = 0x100
-
-class MAC:
-    def __init__(self, secret_data: bytes) -> None:
-        self.secret_data = secret_data
-        self.counter = 0
-
-    def save(self) -> bytes:
-        return struct.pack("<Q", self.counter)
-
-    def restore(self, state: bytes) -> None:
-        (self.counter, ) = struct.unpack("<Q", state)
-
-    def get_key_for_index(self, index: int) -> bytes:
-        return self.secret_data + struct.pack("<Q", index)
-
-    def encode_packet(self, payload: bytes) -> bytes:
-        index = self.counter
-
-        index_byte = struct.pack("<B", index & 0xff)
-
-        mac_bytes = hmac.digest(
-                key=self.get_key_for_index(index),
-                msg=payload + index_byte,
-                digest='sha256')[:7]
-
-        self.counter = index + 1
-        output = payload + index_byte + mac_bytes
-        return output
-
-    def decode_packet(self, packet: bytes) -> typing.Optional[bytes]:
-        assert len(packet) > 8
-        mac_bytes = packet[-7:]
-        index_byte = packet[-8:-7]
-        payload = packet[:-8]
-
-        (partial_index, ) = struct.unpack("<B", index_byte)
-        index = (self.counter & ~0xff) | partial_index
-        if index < self.counter:
-            index += 0x100
-
-        if mac_bytes == hmac.digest(
-                key=self.get_key_for_index(index),
-                msg=payload + index_byte,
-                digest='sha256')[:7]:
-            # accepted - cancel used or skipped keys
-            self.counter = index + 1
-            return payload
-
-        else:
-            # not accepted
-            return None
+from hmac433 import HMAC433 as MAC
 
 def test_normal():
     m1 = MAC(b"s")
@@ -228,8 +177,10 @@ def main():
         data = m.encode_packet(packet)
         store_message(fd, data, False)
         store_message(fd, data, True, counter_jump=True)
+    print("created test_hmac433.bin")
 
 
 if __name__ == "__main__":
     main()
+    sys.exit(pytest.main([__file__]))
 

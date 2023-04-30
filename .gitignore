@@ -1,0 +1,6 @@
+*.pyc
+*.o
+*.exe
+test_rx433.txt
+test_hmac433.bin
+secret.h

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 uint32_t test_time = 0;
 extern uint32_t rx433_data[4];
@@ -24,6 +25,7 @@ int main(void)
     unsigned test4_count = 0;
     unsigned test5_count = 0;
     unsigned expect_count = 0;
+    unsigned i;
 
     fd = fopen("test_rx433.txt", "rt");
     if (!fd) {
@@ -35,6 +37,9 @@ int main(void)
         rx433_count = 0;
         rx433_interrupt();
         expect_count = 0;
+        for (i = 0; i < 4; i++) {
+            rx433_data[i] = htonl(rx433_data[i]);
+        }
         switch(rx433_data[0]) {
             case 0:
                 break;

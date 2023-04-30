@@ -16,7 +16,7 @@ def main() -> None:
         print("Message is too long, max 192 bits")
         return
 
-    with HMAC433(b"\x01\x02\x03\x04") as hmac:
+    with HMAC433() as hmac:
         data = hmac.encode_packet(unencoded)
         print("Counter becomes: {:08x}".format(hmac.counter))
 

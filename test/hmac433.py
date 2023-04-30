@@ -5,19 +5,24 @@ import struct
 import typing
 import os
 
-STATE_FILE = os.path.join(os.environ.get("APPDATA", os.environ.get("HOME", ".")), ".hmac433.dat")
+SECRET_SIZE = 56
+STATE_FILE = os.path.join(os.environ.get("APPDATA",
+                    os.environ.get("HOME", ".")), ".hmac433.dat")
 
 
 class HMAC433:
-    def __init__(self, secret_data: bytes) -> None:
+    def __init__(self, secret_data = b"\x01\x02\x03\x04") -> None:
         self.secret_data = secret_data
         self.counter = 0
 
     def save(self) -> bytes:
-        return struct.pack("<Q", self.counter)
+        assert len(self.secret_data) == SECRET_SIZE
+        return (struct.pack("<Q", self.counter) + self.secret_data)
 
     def restore(self, state: bytes) -> None:
-        (self.counter, ) = struct.unpack("<Q", state)
+        (self.counter, ) = struct.unpack("<Q", state[:8])
+        self.secret_data = state[8:]
+        assert len(self.secret_data) == SECRET_SIZE
 
     def get_key_for_index(self, index: int) -> bytes:
         return self.secret_data + struct.pack("<Q", index)

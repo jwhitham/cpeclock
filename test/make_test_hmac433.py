@@ -5,6 +5,7 @@ import pytest
 import sys
 
 from hmac433 import HMAC433 as MAC
+from hmac433 import SECRET_SIZE
 
 def test_normal():
     m1 = MAC(b"s")
@@ -89,8 +90,8 @@ def test_wrong():
     assert p2 == b"1234"
 
 def test_save_load():
-    m1 = MAC(b"s")
-    m2 = MAC(b"s")
+    m1 = MAC(b"s" * SECRET_SIZE)
+    m2 = MAC(b"s" * SECRET_SIZE)
     p = m1.encode_packet(b"1234")
     s2 = m2.save()
     p2 = m2.decode_packet(p)

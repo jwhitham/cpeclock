@@ -19,6 +19,9 @@ void rx433_interrupt(void)
     static uint32_t bit_count = 0;
     static uint32_t bit_data[MAX_CODE_LENGTH / 32] = {0};
 
+#define SET_BIT(bit_count) \
+    ((uint8_t *) bit_data)[bit_count >> 3] |= 0x80 >> (bit_count & 7)
+
     uint32_t new_time = micros();
     uint32_t units = (new_time - old_time) >> 7;
     uint32_t i;
@@ -48,7 +51,7 @@ void rx433_interrupt(void)
                     break;
                 case NC_RECEIVED_LONG:
                     // New Code: long then short -> bit 1
-                    bit_data[bit_count >> 5] |= (uint32_t) (1 << 31) >> (bit_count & 31);
+                    SET_BIT(bit_count);
                     bit_count ++;
                     state = NC_READY_FOR_BIT;
                     if (bit_count >= MAX_CODE_LENGTH) {
@@ -71,7 +74,7 @@ void rx433_interrupt(void)
                     break;
                 case HE_RECEIVED_LONG:
                     // Home Easy: long then short -> bit 1
-                    bit_data[bit_count >> 5] |= (uint32_t) (1 << 31) >> (bit_count & 31);
+                    SET_BIT(bit_count);
                     bit_count ++;
                     state = HE_READY_FOR_BIT;
                     if (bit_count >= MIN_CODE_LENGTH) {

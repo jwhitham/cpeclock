@@ -32,11 +32,11 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 RTC_DS1307 rtc;     // RTC address 0x68
 
-static void rx433_interrupt2()
+extern "C" void set_int_pin(char value);
+
+void set_int_pin(char value)
 {
-    digitalWrite(INT_PIN, HIGH);
-    rx433_interrupt();
-    digitalWrite(INT_PIN, LOW);
+    digitalWrite(INT_PIN, value ? HIGH : LOW);
 }
 
 void setup()
@@ -82,7 +82,7 @@ void setup()
             for(;;);
         }
     }
-    attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt2, RISING);
+    attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
     if (!mail_init()) {
         Serial.println("mail_init() failed");

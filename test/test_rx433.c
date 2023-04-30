@@ -3,7 +3,16 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#define swap_endian(x) ((((x) & 0x000000ff) << 24)  \
+                    | (((x) & 0x0000ff00) << 8)     \
+                    | (((x) & 0x00ff0000) >> 8)     \
+                    | (((x) & 0xff000000) >> 24))
+#else
 #include <arpa/inet.h>
+#define swap_endian(x) htonl((x))
+#endif
 
 uint32_t test_time = 0;
 extern uint32_t rx433_data[4];
@@ -38,7 +47,7 @@ int main(void)
         rx433_interrupt();
         expect_count = 0;
         for (i = 0; i < 4; i++) {
-            rx433_data[i] = htonl(rx433_data[i]);
+            rx433_data[i] = swap_endian(rx433_data[i]);
         }
         switch(rx433_data[0]) {
             case 0:

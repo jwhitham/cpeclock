@@ -51,11 +51,18 @@ void setup()
     digitalWrite(LED_BUILTIN, HIGH);
     digitalWrite(INT_PIN, LOW);
 
+    uint32_t start = micros();
+    bool no_serial = false;
     while (!Serial) {
+        uint32_t waited = micros() - start;
+        if (waited > 500000) {
+            no_serial = true;
+            break;
+        }
         delay(10);
     }
     Serial.begin(9600);
-    const char* boot = "Build date " __DATE__;
+    const char* boot = no_serial ? "Boot" : "Build date " __DATE__;
     Serial.println(boot);
     Serial.flush();
 

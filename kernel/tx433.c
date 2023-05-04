@@ -37,12 +37,12 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             6
+#define VERSION             7
 
-#define SYMBOL_SIZE     (5)     // 5 bits per symbol
+#define SYMBOL_SIZE         (5)     // 5 bits per symbol
 
-#define MIN_DATA_SIZE (9)           // Home Easy: 8 hex digits plus '\n'
-#define MAX_DATA_SIZE (31)          // New codes: 31 base-32 symbols
+#define MIN_DATA_SIZE       (9)     // Home Easy: 8 hex digits plus '\n'
+#define MAX_DATA_SIZE       (31)    // New codes: 31 base-32 symbols
 
 // #define TX_PIN           24      // physical pin 18
 #define TX_PIN              26      // physical pin 37
@@ -154,18 +154,17 @@ static unsigned transmit_new_code(uint8_t *message)
     do_gettimeofday(&initial);
     await_timer = start = micros();
 
-    // send start code: 1010101010
+    // send start code: 101010101011
     for (j = 0; j < 5; j++) {
         send_high(high);
         await((period * 2) - high);
     }
+    for (j = 0; j < 2; j++) {
+        send_high(high);
+        await(period - high);
+    }
     for (i = 0; i < MAX_DATA_SIZE; i++) {
         uint8_t symbol = message[i];
-        // send 2 symbol start bits: 11
-        for (j = 0; j < 2; j++) {
-            send_high(high);
-            await(period - high);
-        }
         // send symbol
         for (j = 0; j < SYMBOL_SIZE; j++) {
             if (symbol & (1 << (SYMBOL_SIZE - 1))) {
@@ -176,8 +175,11 @@ static unsigned transmit_new_code(uint8_t *message)
             }
             symbol = symbol << 1;
         }
+        // end of symbol
+        send_high(high);
+        await(period - high);
     }
-    // "send" finish code: 00
+    // gap before allowing anything else
     await(period * 2);
     stop = micros();
     return stop - start;

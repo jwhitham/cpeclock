@@ -29,7 +29,6 @@
 #include <linux/cdev.h>
 #include <linux/version.h>
 #include <linux/time.h>
-#include <linux/rslib.h>
 
 #include <asm/io.h>
 #include <asm/delay.h>
@@ -38,17 +37,12 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             5
+#define VERSION             6
 
 #define SYMBOL_SIZE     (5)     // 5 bits per symbol
-#define NROOTS          (10)    // 10 parity symbols
-#define MSG_SYMBOLS     (21)    // 21 message symbols
-#define GFPOLY          (0x25)  // Reed Solomon Galois field polynomial
-#define FCR             (1)     // First Consecutive Root
-#define PRIM            (1)     // Primitive Element
 
 #define MIN_DATA_SIZE (9)           // Home Easy: 8 hex digits plus '\n'
-#define MAX_DATA_SIZE (MSG_SYMBOLS) // New codes: 21 base-32 symbols plus '\n'
+#define MAX_DATA_SIZE (31)          // New codes: 31 base-32 symbols
 
 // #define TX_PIN           24      // physical pin 18
 #define TX_PIN              26      // physical pin 37
@@ -56,7 +50,6 @@
 
 static void __iomem *gpio;
 static uintptr_t gpio1;
-static struct rs_control *reed_solomon;
 
 static inline void INP_GPIO(unsigned g)
 {
@@ -151,67 +144,6 @@ static unsigned transmit_home_easy_code(unsigned tx_code, unsigned attempts)
 }
 
 
-typedef struct home_easy_style_code_properties_s {
-    unsigned    high_time;
-    unsigned    start_low_time;
-    unsigned    short_low_time;
-    unsigned    long_low_time;
-    unsigned    finish_low_time;
-    unsigned    final;
-    unsigned    repeats;
-} home_easy_style_code_properties_t;
-
-
-static const home_easy_style_code_properties_t classic_home_easy_properties = {
-    .final = 0,
-    .repeats = 5,
-};
-
-static unsigned transmit_home_easy_style_code(
-        uint8_t* bytes,
-        size_t num_bytes,
-        const home_easy_style_code_properties_t* cp)
-{
-    unsigned i, j, k, start, stop;
-
-    do_gettimeofday(&initial);
-    await_timer = start = micros();
-    for (i = cp->repeats; i != 0; i--) {
-        // Send start code
-        send_high(cp->high_time);
-        await(cp->start_low_time);
-        for (j = 0; j < num_bytes; j++) {
-            uint8_t byte = bytes[j];
-            for (k = 0; k < 8; k++) {
-                if (byte & 0x80) {
-                    // Send 'one' bit
-                    send_high(cp->high_time);
-                    await(cp->long_low_time);
-                    send_high(cp->high_time);
-                    await(cp->short_low_time);
-                } else {
-                    // Send 'zero' bit
-                    send_high(cp->high_time);
-                    await(cp->short_low_time);
-                    send_high(cp->high_time);
-                    await(cp->long_low_time);
-                }
-                byte = byte << 1;
-            }
-        }
-        // Send finish code
-        send_high(cp->high_time);
-        await(cp->finish_low_time);
-    }
-    if (cp->final) {
-        // Final code to mark the end of transmission
-        send_high(cp->high_time);
-        await(cp->short_low_time);
-    }
-    stop = micros();
-    return stop - start;
-}
-
 static unsigned transmit_new_code(uint8_t *message)
 {
     const unsigned period = 0x200;
@@ -227,7 +159,7 @@ static unsigned transmit_new_code(uint8_t *message)
         send_high(high);
         await((period * 2) - high);
     }
-    for (i = 0; i < (MAX_DATA_SIZE + NROOTS); i++) {
+    for (i = 0; i < MAX_DATA_SIZE; i++) {
         uint8_t symbol = message[i];
         // send 2 symbol start bits: 11
         for (j = 0; j < 2; j++) {
@@ -304,40 +236,19 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
         local_irq_restore(flags);
         printk(KERN_ERR DEV_NAME ": send %08x took %u\n", code, timing);
 
-    } else if (count == MSG_SYMBOLS) {
-        // Long codes use the new protocol
-        // 105 bits of payload, encoded as 5 bit symbols, in 21 bytes
-        // to which we add 50 bits of parity data with Reed Solomon
-        // for a total of 155 bits or 31 symbols
+    } else if (count == MAX_DATA_SIZE) {
+        // Long codes use the new protocol - 31 symbols of 5 bits each
+        // Reed Solomon encoding is done in userspace as it's not in
+        // the Raspberry Pi kernel, nor even in a loadable module... :(
         size_t i;
-        uint16_t par[NROOTS];
-        uint8_t message[MSG_SYMBOLS + NROOTS];
-        for (i = 0; i < MSG_SYMBOLS; i++) {
-            message[i] = user_data[i];
-            if (message[i] >= (1 << SYMBOL_SIZE)) {
+        for (i = 0; i < MAX_DATA_SIZE; i++) {
+            if (((uint8_t) user_data[i]) >= (1 << SYMBOL_SIZE)) {
                 return -EINVAL;
             }
         }
-        // Reed Solomon encoding
-        if (encode_rs8(reed_solomon, message, MAX_DATA_SIZE, par, 0) < 0) {
-            printk(KERN_ERR DEV_NAME ": encode_rs8 failed\n");
-            return -ENOMSG;
-        }
-        for (i = 0; i < NROOTS; i++) {
-            message[i + MSG_SYMBOLS] = par[i];
-        }
-        // transmit
         local_irq_save(flags);
-        timing = transmit_new_code(message);
+        timing = transmit_new_code((uint8_t *) user_data);
         local_irq_restore(flags);
-        // Sanity check (test error recovery from deliberate corruption)
-        message[0] ^= 0x1;
-        if ((decode_rs8(reed_solomon, message, par, MSG_SYMBOLS,
-                            NULL, 0, NULL, 0, NULL) != 1)
-        || (memcmp(user_data, message, MSG_SYMBOLS) != 0)) {
-            printk(KERN_ERR DEV_NAME ": decode_rs8 failed\n");
-            return -ENOMSG;
-        }
         printk(KERN_ERR DEV_NAME ": send new code took %u\n", timing);
     } else {
         return -EINVAL;
@@ -389,12 +300,6 @@ static int __init tx433_init(void)
             printk(KERN_ERR DEV_NAME ": unknown CPU ID 0x%08x, refusing to load tx433\n", id);
             return -ENXIO;
     }
-    reed_solomon = init_rs(SYMBOL_SIZE, GFPOLY, FCR, PRIM, NROOTS);
-    if (!reed_solomon) {
-        printk(KERN_ERR DEV_NAME ": init_rs failed\n");
-        return -ENOMSG;
-    }
-
     gpio = ioremap_nocache(physical, BLOCK_SIZE);
     if (gpio == NULL) {
         printk(KERN_ERR DEV_NAME ": ioremap_nocache failed (physical %p)\n", (void *) physical);
@@ -416,7 +321,6 @@ static void __exit tx433_exit(void)
     printk(KERN_ERR DEV_NAME ": tx433_exit\n");
     iounmap(gpio);
     misc_deregister(&tx433_misc_device);
-    free_rs(reed_solomon);
     gpio1 = 0;
     gpio = NULL;
 }

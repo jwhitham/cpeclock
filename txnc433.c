@@ -2,6 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <fec.h>
 
 #define SYMBOL_SIZE     (5)     // 5 bits per symbol
@@ -19,6 +23,7 @@ int main(void)
     uint8_t message[MSG_SYMBOLS + NROOTS];
     size_t  i;
     int     rc;
+    int     fd;
 
     reed_solomon = init_rs_char(SYMBOL_SIZE, GFPOLY, FCR, PRIM, NROOTS, PAD);
     if (!reed_solomon) {
@@ -36,6 +41,16 @@ int main(void)
         printf("%02x ", message[i]);
     }
     printf("\n");
+
+    fd = open("/dev/tx433", O_WRONLY);
+    if (fd < 0) {
+        perror("Unable to open device");
+    } else {
+        if (write(fd, message, MSG_SYMBOLS + NROOTS) != (MSG_SYMBOLS + NROOTS)) {
+            perror("Unable to write message");
+        }
+        close(fd);
+    }
 
     message[0] ^= 1;
     rc = decode_rs_char(reed_solomon, message, NULL, 0);

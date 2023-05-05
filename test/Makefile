@@ -14,7 +14,7 @@ test_rx433.txt: make_test_rx433.py readcode.py
 	python make_test_rx433.py
 
 test_rx433.exe: test_rx433.c ../rx433.c ../rx433.h
-	gcc -o test_rx433.exe test_rx433.c ../rx433.c $(CFLAGS)
+	gcc -o test_rx433.exe test_rx433.c ../rx433.c $(CFLAGS) -DTEST_MODE
 
 test_hmac433.bin: make_test_hmac433.py readcode.py 
 	python make_test_hmac433.py

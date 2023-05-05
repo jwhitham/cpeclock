@@ -2,6 +2,12 @@
 #include "rx433.h"
 
 
+// constants for new codes
+#define PERIOD              0x200   // Timing for new code
+// (SYMBOL_SIZE + 1) bits per symbol (includes 1 start bit)
+#define NC_FINAL_BIT        (NC_DATA_SIZE * (SYMBOL_SIZE + 1))
+#define NC_BUFFER_SIZE      ((NC_FINAL_BIT + 7) / 8)
+
 extern uint32_t micros();
 
 static uint32_t old_time = 0;
@@ -20,9 +26,12 @@ typedef enum { NC_RESET, NC_START, NC_RECEIVE } t_nc_state;
 static t_nc_state nc_state = NC_RESET;
 static uint8_t nc_buffer[NC_BUFFER_SIZE] = {0};
 static uint32_t nc_timebase = 0;
-volatile uint8_t rx433_new_code[NC_BUFFER_SIZE] = {0};
-volatile uint8_t rx433_new_code_ready;
+volatile uint8_t rx433_new_code[NC_DATA_SIZE] = {0};
+volatile uint8_t rx433_new_code_ready = 0;
 
+#ifdef TEST_MODE
+extern void panic();
+#endif
 
 void rx433_interrupt(void)
 {
@@ -125,17 +134,37 @@ void rx433_interrupt(void)
                 // bit 6 = first stop bit
                 // ... etc...
 
-                if (bit >= NC_FINAL_BIT) {
+                if (bit < NC_FINAL_BIT) {
+                    nc_buffer[bit / 8] |= 0x80 >> (bit % 8);
+                } else {
                     // This is the final bit, or after it
-                    unsigned i;
-                    nc_state = NC_RESET;
-                    rx433_new_code_ready = 1;
+                    uint32_t i, j;
+                    bit = 0;
+                    // unpack bits into the rx433_new_code array
+                    // Each byte in that array is a symbol (i.e. 3 unused bits)
                     for (i = 0; i < NC_DATA_SIZE; i++) {
-                        rx433_new_code[i] = nc_buffer[i];
+                        uint8_t unpacked = 0;
+                        bit++; // skip the unused bit at the beginning of the received symbol
+                        for (j = 0; j < SYMBOL_SIZE; j++) {
+                            if (nc_buffer[bit / 8] & (0x80 >> (bit % 8)) ) {
+                                unpacked |= (1 << (SYMBOL_SIZE - 1)) >> j;
+                            }
+                            bit++; // next bit
+                        }
+                        rx433_new_code[i] = unpacked;
+                    }
+#ifdef TEST_MODE    // ensure that array size calculations are correct
+                    if (bit != NC_FINAL_BIT) {
+                        panic();
+                    }
+#endif
+                    // zero the buffer for next use
+                    for (i = 0; i < NC_BUFFER_SIZE; i++) {
                         nc_buffer[i] = 0;
                     }
-                } else {
-                    nc_buffer[bit / 8] |= ((uint32_t) 1 << (uint32_t) 7) >> (bit % 8);
+                    // message is ready
+                    nc_state = NC_RESET;
+                    rx433_new_code_ready = 1;
                 }
             }
             break;

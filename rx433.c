@@ -29,6 +29,9 @@ static uint32_t nc_timebase = 0;
 volatile uint8_t rx433_new_code[NC_DATA_SIZE] = {0};
 volatile uint8_t rx433_new_code_ready = 0;
 
+#define EPSILON 100
+#define IS_CLOSE(delta, centre) (((delta) + EPSILON - (centre)) < (EPSILON * 2))
+
 #ifdef TEST_MODE
 extern void panic();
 #endif
@@ -109,20 +112,22 @@ void rx433_interrupt(void)
     // New codes
     switch (nc_state) {
         case NC_RESET:
-            if ((delta - ((PERIOD * 7) / 4)) < (PERIOD / 2)) {
+            if (IS_CLOSE(delta, PERIOD * 2)) {
                 // indicates a "10" start code
                 nc_state = NC_START;
+                nc_timebase = new_time - (PERIOD / 4);
             }
             break;
         case NC_START:
-            if ((delta - ((PERIOD * 7) / 4)) < (PERIOD / 2)) {
+            if (IS_CLOSE(delta, PERIOD * 2)) {
                 // repeat of a "10" start code
-            } else if ((delta - ((PERIOD * 3) / 4)) < (PERIOD / 2)) {
+                nc_timebase = new_time - (PERIOD / 4);
+            } else if (IS_CLOSE(delta, PERIOD)) {
                 // indicates a "11" start code following a "10" start code
                 nc_state = NC_RECEIVE;
                 nc_timebase = new_time - (PERIOD / 4);
-            } else {
-                // invalid code
+            } else if (new_time > (nc_timebase + (PERIOD * 2))) {
+                // invalid code / timeout
                 nc_state = NC_RESET;
             }
             break;
@@ -134,10 +139,9 @@ void rx433_interrupt(void)
                 // bit 6 = first stop bit
                 // ... etc...
 
-                if (bit <= NC_FINAL_BIT) {
+                if (bit < NC_FINAL_BIT) {
                     nc_buffer[bit / 8] |= 0x80 >> (bit % 8);
-                }
-                if (bit >= NC_FINAL_BIT) {
+                } else {
                     // This is the final bit, or after it
                     uint32_t i, j;
                     bit = 0;

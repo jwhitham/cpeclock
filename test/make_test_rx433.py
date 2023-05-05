@@ -54,7 +54,7 @@ def synthesize_new_code(message: typing.List[int]) -> typing.List[typing.Tuple[f
         wait(PERIOD - HIGH)
 
     # gap before allowing anything else
-    wait(PERIOD * 2)
+    wait(PERIOD * 20)
     return out
 
 
@@ -65,19 +65,23 @@ def main():
         synthesize_new_code(TEST_CODE_1),
         synthesize_new_code(TEST_CODE_2),
         synthesize_new_code(TEST_CODE_3),
+        synthesize_new_code(TEST_CODE_4),
         read_edges("test5.csv", 1e-3),
         read_edges("test6.csv", 1e-3),
         read_edges("test7.csv", 1e-3),
-        synthesize_new_code(TEST_CODE_4),
+        [(0.000, False), (0.003, True), (0.005, False)],
+        # test7.csv - A spurious '1' bit during the start code causes the whole message to be misinterpreted.
     ]
 
     with open("test_rx433.txt", "wt") as fd:
+        time = offset = 0.0
         for edges in recordings:
             (start, _) = edges[0]
             for (time, high) in edges:
                 if high:
                     fd.write("{:08x}\n".format(max(0,
-                            int(math.floor((time - start) * 1e6)))))
+                            int(math.floor((offset + time - start) * 1e6)))))
+            offset += time - start
 
 if __name__ == "__main__":
     main()

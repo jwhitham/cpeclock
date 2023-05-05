@@ -134,9 +134,10 @@ void rx433_interrupt(void)
                 // bit 6 = first stop bit
                 // ... etc...
 
-                if (bit < NC_FINAL_BIT) {
+                if (bit <= NC_FINAL_BIT) {
                     nc_buffer[bit / 8] |= 0x80 >> (bit % 8);
-                } else {
+                }
+                if (bit >= NC_FINAL_BIT) {
                     // This is the final bit, or after it
                     uint32_t i, j;
                     bit = 0;

@@ -42,7 +42,9 @@
 #define SYMBOL_SIZE         (5)     // 5 bits per symbol
 
 #define MIN_DATA_SIZE       (9)     // Home Easy: 8 hex digits plus '\n'
-#define MAX_DATA_SIZE       (31)    // New codes: 31 base-32 symbols
+#define NC_DATA_SIZE        (31)    // New codes: 31 base-32 symbols
+#define HIGH                0x100   // Timing for new code
+#define PERIOD              0x200   // Timing for new code
 
 // #define TX_PIN           24      // physical pin 18
 #define TX_PIN              26      // physical pin 37
@@ -146,8 +148,6 @@ static unsigned transmit_home_easy_code(unsigned tx_code, unsigned attempts)
 
 static unsigned transmit_new_code(uint8_t *message)
 {
-    const unsigned period = 0x200;
-    const unsigned high = 0x100;
     size_t i, j;
     unsigned start, stop;
 
@@ -156,31 +156,31 @@ static unsigned transmit_new_code(uint8_t *message)
 
     // send start code: 101010101011
     for (j = 0; j < 5; j++) {
-        send_high(high);
-        await((period * 2) - high);
+        send_high(HIGH);
+        await((PERIOD * 2) - HIGH);
     }
     for (j = 0; j < 2; j++) {
-        send_high(high);
-        await(period - high);
+        send_high(HIGH);
+        await(PERIOD - HIGH);
     }
-    for (i = 0; i < MAX_DATA_SIZE; i++) {
+    for (i = 0; i < NC_DATA_SIZE; i++) {
         uint8_t symbol = message[i];
         // send symbol
         for (j = 0; j < SYMBOL_SIZE; j++) {
             if (symbol & (1 << (SYMBOL_SIZE - 1))) {
-                send_high(high);
-                await(period - high);
+                send_high(HIGH);
+                await(PERIOD - HIGH);
             } else {
-                await(period);
+                await(PERIOD);
             }
             symbol = symbol << 1;
         }
         // end of symbol
-        send_high(high);
-        await(period - high);
+        send_high(HIGH);
+        await(PERIOD - HIGH);
     }
     // gap before allowing anything else
-    await(period * 2);
+    await(PERIOD * 2);
     stop = micros();
     return stop - start;
 }
@@ -198,14 +198,14 @@ static int tx433_release(struct inode *inode, struct file *file)
 static ssize_t tx433_write(struct file *file, const char __user *buf,
                 size_t count, loff_t *pos)
 {
-    char user_data[MAX_DATA_SIZE];
+    char user_data[NC_DATA_SIZE];
     unsigned long flags;
     unsigned timing = 0;
 
     // The code provided to /dev/tx433 should be an even
     // number of hexadecimal digits ending in '\n'
     if ((count < MIN_DATA_SIZE)
-    || (count > MAX_DATA_SIZE)
+    || (count > NC_DATA_SIZE)
     || ((count & 1) == 0)) {
         return -EINVAL;
     }
@@ -238,12 +238,12 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
         local_irq_restore(flags);
         printk(KERN_ERR DEV_NAME ": send %08x took %u\n", code, timing);
 
-    } else if (count == MAX_DATA_SIZE) {
+    } else if (count == NC_DATA_SIZE) {
         // Long codes use the new protocol - 31 symbols of 5 bits each
         // Reed Solomon encoding is done in userspace as it's not in
         // the Raspberry Pi kernel, nor even in a loadable module... :(
         size_t i;
-        for (i = 0; i < MAX_DATA_SIZE; i++) {
+        for (i = 0; i < NC_DATA_SIZE; i++) {
             if (((uint8_t) user_data[i]) >= (1 << SYMBOL_SIZE)) {
                 return -EINVAL;
             }

@@ -4,8 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "rx433.h"
+
 uint32_t test_time = 0;
-extern volatile uint32_t rx433_home_easy;
 extern void rx433_interrupt(void);
 
 uint32_t micros()
@@ -30,6 +31,7 @@ int main(void)
     }
     while (fscanf(fd, "%x\n", &test_time) == 1) {
         rx433_home_easy = 0;
+        rx433_new_code_ready = 0;
         rx433_interrupt();
         switch(rx433_home_easy) {
             case 0:
@@ -46,7 +48,13 @@ int main(void)
                 fprintf(stderr, "invalid code received: %08x\n", rx433_home_easy);
                 return 1;
         }
-        // add tests for new codes here
+        if (rx433_new_code_ready) {
+            unsigned i;
+            for (i = 0; i < NC_BUFFER_SIZE; i++) {
+                printf("%02x ", rx433_new_code[i]);
+            }
+            printf("\n");
+        }
     }
     fclose(fd);
     if ((test1_count < 15)

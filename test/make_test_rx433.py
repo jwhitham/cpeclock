@@ -65,6 +65,9 @@ def main():
         synthesize_new_code(TEST_CODE_1),
         synthesize_new_code(TEST_CODE_2),
         synthesize_new_code(TEST_CODE_3),
+        read_edges("test5.csv", 1e-3),
+        read_edges("test6.csv", 1e-3),
+        read_edges("test7.csv", 1e-3),
         synthesize_new_code(TEST_CODE_4),
     ]
 

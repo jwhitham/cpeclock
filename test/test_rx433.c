@@ -33,6 +33,12 @@ static uint8_t TEST_CODE_3[] =
     {31, 20, 5, 31, 8, 31, 0, 18, 14, 12, 29, 21, 22, 7, 9, 17, 8, 6, 8, 4, 9, 29, 16, 1, 24, 18, 27, 5, 23, 29, 31};
 static uint8_t TEST_CODE_4[] =
     {0, 28, 31, 29, 5, 30, 30, 20, 14, 12, 13, 4, 9, 12, 24, 10, 23, 4, 24, 29, 24, 15, 2, 17, 15, 5, 29, 0, 4, 17, 0};
+static uint8_t TEST_CODE_5[] =
+    {0, 29, 12, 31, 15, 25, 26, 22, 29, 31, 2, 23, 26, 27, 18, 24, 6, 10, 2, 17, 21, 9, 29, 4, 21, 19, 1, 7, 19, 20, 0};
+static uint8_t TEST_CODE_6[] = // note last bit error (cut off by recording)
+    {31, 24, 31, 19, 20, 1, 2, 26, 28, 23, 16, 23, 21, 25, 11, 1, 14, 2, 20, 5, 5, 9, 10, 2, 15, 15, 11, 13, 30, 21, 30};
+static uint8_t TEST_CODE_7[] =
+    {29, 8, 6, 28, 26, 22, 1, 13, 24, 28, 18, 31, 27, 26, 1, 30, 19, 28, 24, 2, 9, 22, 11, 22, 27, 6, 18, 31, 6, 8, 12};
 
 int main(void)
 {
@@ -40,6 +46,7 @@ int main(void)
     unsigned test1_count = 0;
     unsigned test2_count = 0;
     unsigned test3_count = 0;
+    unsigned test4_count = 0;
 
     fd = fopen("test_rx433.txt", "rt");
     if (!fd) {
@@ -70,13 +77,20 @@ int main(void)
             || matches_test_code(TEST_CODE_2)
             || matches_test_code(TEST_CODE_3)
             || matches_test_code(TEST_CODE_4)) {
+                // Synthetic code
                 test3_count++;
+                printf("%d new code begins %d\n", test_time, rx433_new_code[0]);
+            } else if (matches_test_code(TEST_CODE_5)
+            || matches_test_code(TEST_CODE_6)
+            || matches_test_code(TEST_CODE_7)) {
+                // Code from hardware sent via radio, recorded by Picoscope
+                test4_count++;
                 printf("%d new code begins %d\n", test_time, rx433_new_code[0]);
             } else {
                 unsigned i;
                 fprintf(stderr, "invalid new code received: ");
                 for (i = 0; i < NC_DATA_SIZE; i++) {
-                    fprintf(stderr, "%02x ", rx433_new_code[i]);
+                    fprintf(stderr, "%0d, ", rx433_new_code[i]);
                 }
                 fprintf(stderr, "\n");
                 return 1;
@@ -87,13 +101,14 @@ int main(void)
     if ((test1_count < 15)
     || (test2_count < 15)
     || (test3_count != 4)
+    || (test4_count != 3)
     || (test1_count > 20)
     || (test2_count > 20)) {
-        fprintf(stderr, "incorrect results: %u %u %u\n",
-                    test1_count, test2_count, test3_count);
+        fprintf(stderr, "incorrect results: %u %u %u %u\n",
+                    test1_count, test2_count, test3_count, test4_count);
         return 1;
     }
-    printf("ok %u %u %u\n", test1_count, test2_count, test3_count);
+    printf("ok %u %u %u %u\n", test1_count, test2_count, test3_count, test4_count);
     return 0;
 }
 

@@ -59,11 +59,11 @@ def main():
         synthesize_new_code(TEST_CODE_2),
         synthesize_new_code(TEST_CODE_3),
         synthesize_new_code(TEST_CODE_4),
-        read_edges("test5.csv", 1e-3),
-        read_edges("test6.csv", 1e-3),
-        read_edges("test7.csv", 1e-3),
-        [(0.000, False), (0.003, True), (0.005, False)],
-        # test7.csv - A spurious '1' bit during the start code causes the whole message to be misinterpreted.
+        read_edges("test5.csv", 1e-3),      # clean recording
+        read_edges("test6a.csv", 1e-3),     # clean recording
+        read_edges("test7.csv", 1e-3),      # clean recording
+        read_edges("test6.csv", 1e-3),      # noisy
+        [(i * 0.001, True) for i in range(100)]
     ]
 
     with open("test_rx433.txt", "wt") as fd:

@@ -39,6 +39,9 @@ static uint8_t TEST_CODE_6[] =
     {31, 24, 31, 19, 20, 1, 2, 26, 28, 23, 16, 23, 21, 25, 11, 1, 14, 2, 20, 5, 5, 9, 10, 2, 15, 15, 11, 13, 30, 21, 31};
 static uint8_t TEST_CODE_7[] =
     {29, 8, 6, 28, 26, 22, 1, 13, 24, 28, 18, 31, 27, 26, 1, 30, 19, 28, 24, 2, 9, 22, 11, 22, 27, 6, 18, 31, 6, 8, 12};
+static uint8_t TEST_CODE_6_NOISY[] =
+    {   255, 31, 19, 20, 1, 2, 26, 28, 23, 16, 23, 21, 25, 11, 1, 14, 2, 20, 5, 5, 9, 10, 2, 15, 15, 11, 13, 30, 21, 31, 255};
+
 
 int main(void)
 {
@@ -80,6 +83,7 @@ int main(void)
             if (matches_test_code(TEST_CODE_5)) { c = 5; }
             if (matches_test_code(TEST_CODE_6)) { c = 6; }
             if (matches_test_code(TEST_CODE_7)) { c = 7; }
+            if (matches_test_code(TEST_CODE_6_NOISY)) { c = 8; }
 
             if (c != 0) {
                 test3_count++;
@@ -98,7 +102,7 @@ int main(void)
     fclose(fd);
     if ((test1_count < 15)
     || (test2_count < 15)
-    || (test3_count != 7)
+    || (test3_count != 8)
     || (test1_count > 20)
     || (test2_count > 20)) {
         fprintf(stderr, "incorrect results: %u %u %u\n",

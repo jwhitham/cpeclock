@@ -43,8 +43,7 @@
 
 #define MIN_DATA_SIZE       (9)     // Home Easy: 8 hex digits plus '\n'
 #define NC_DATA_SIZE        (31)    // New codes: 31 base-32 symbols
-#define PERIOD              (0x200) // Timing for new code
-#define HIGH                (PERIOD / 2)
+#define NC_PULSE            (0x100) // Timing for new code
 
 // #define TX_PIN           24      // physical pin 18
 #define TX_PIN              26      // physical pin 37
@@ -156,25 +155,27 @@ static unsigned transmit_new_code(uint8_t *message)
 
     for (i = 0; i < NC_DATA_SIZE; i++) {
         uint8_t symbol = message[i];
-        // start of symbol: 101
-        send_high(HIGH);
-        await((PERIOD * 2) - HIGH);
-        send_high(HIGH);
-        await(PERIOD - HIGH);
+        // start symbol: 11010
+        send_high(NC_PULSE * 2);
+        await(NC_PULSE);
+        send_high(NC_PULSE);
+        await(NC_PULSE);
         // send symbol
         for (j = 0; j < SYMBOL_SIZE; j++) {
             if (symbol & (1 << (SYMBOL_SIZE - 1))) {
-                send_high(HIGH);
-                await(PERIOD - HIGH);
+                // 10
+                send_high(NC_PULSE);
+                await(NC_PULSE);
             } else {
-                await(PERIOD);
+                // 00
+                await(NC_PULSE * 2);
             }
             symbol = symbol << 1;
         }
     }
-    // end of final symbol: 100
-    send_high(HIGH);
-    await((PERIOD * 3) - HIGH);
+    // end of final symbol: 10
+    send_high(NC_PULSE);
+    await(NC_PULSE);
     stop = micros();
     return stop - start;
 }

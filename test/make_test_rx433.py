@@ -5,8 +5,7 @@ import typing
 
 SYMBOL_SIZE = 5
 DATA_SIZE = 31
-PERIOD = 0x200
-HIGH = 0x100
+NC_PULSE = 0x100
 
 TEST_CODE_1 = [6, 23, 31, 29, 26, 21, 1, 18, 1, 4, 20, 27, 22, 27, 29, 16, 9, 22, 25, 28, 20, 13, 15, 18, 16, 21, 17, 31, 1, 1, 2]
 TEST_CODE_2 = [13, 17, 20, 16, 20, 14, 7, 29, 15, 29, 17, 1, 30, 20, 7, 7, 0, 28, 29, 1, 26, 14, 20, 22, 21, 28, 7, 21, 2, 28, 11]
@@ -29,32 +28,26 @@ def synthesize_new_code(message: typing.List[int]) -> typing.List[typing.Tuple[f
         (previous, _) = out[-1]
         out.append((previous + (delta / 1e6), False))
 
-    # send start code: 101010101011
-    for j in range(5):
-        send_high(HIGH)
-        wait((PERIOD * 2) - HIGH)
-
-    for j in range(2):
-        send_high(HIGH)
-        wait(PERIOD - HIGH)
-
     for symbol in message:
         assert 0 <= symbol
         assert symbol < (1 << SYMBOL_SIZE)
+        # start of symbol: 11010
+        send_high(NC_PULSE * 2)
+        wait(NC_PULSE)
+        send_high(NC_PULSE)
+        wait(NC_PULSE)
         # send symbol
         for j in range(SYMBOL_SIZE):
             if symbol & (1 << (SYMBOL_SIZE - 1)):
-                send_high(HIGH)
-                wait(PERIOD - HIGH)
+                send_high(NC_PULSE)
+                wait(NC_PULSE)
             else:
-                wait(PERIOD)
+                wait(NC_PULSE * 2)
             symbol = symbol << 1
-        # end of symbol
-        send_high(HIGH)
-        wait(PERIOD - HIGH)
 
-    # gap before allowing anything else
-    wait(PERIOD * 20)
+    # end of final symbol: 10
+    send_high(NC_PULSE)
+    wait(NC_PULSE)
     return out
 
 

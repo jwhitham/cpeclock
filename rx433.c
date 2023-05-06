@@ -1,12 +1,13 @@
 
+#include <string.h>
 #include "rx433.h"
 
 
 // constants for new codes
-#define PERIOD              0x200   // Timing for new code
-// (SYMBOL_SIZE + 1) bits per symbol (includes 1 start bit)
-#define NC_FINAL_BIT        (NC_DATA_SIZE * (SYMBOL_SIZE + 1))
-#define NC_BUFFER_SIZE      ((NC_FINAL_BIT + 7) / 8)
+#define NC_PULSE 0x100
+#define EPSILON  0x40
+
+#define NC_SYMBOL_TIME      ((NC_PULSE * 5) + (NC_PULSE * 2 * SYMBOL_SIZE))
 
 extern uint32_t micros();
 
@@ -21,20 +22,18 @@ static uint32_t he_bit_data = 0;
 volatile uint32_t rx433_home_easy = 0;
 
 // New code decoder state
-typedef enum { NC_RESET, NC_START, NC_RECEIVE } t_nc_state;
+typedef enum { NC_RESET, NC_CONTINUE, NC_RECEIVE } t_nc_state;
 
 static t_nc_state nc_state = NC_RESET;
-static uint8_t nc_buffer[NC_BUFFER_SIZE] = {0};
+static uint8_t nc_buffer[NC_DATA_SIZE] = {0};
 static uint32_t nc_timebase = 0;
+static uint32_t nc_count = 0;
 volatile uint8_t rx433_new_code[NC_DATA_SIZE] = {0};
 volatile uint8_t rx433_new_code_ready = 0;
 
-#define EPSILON 100
-#define IS_CLOSE(delta, centre) (((delta) + EPSILON - (centre)) < (EPSILON * 2))
+#define IS_CLOSE(delta, centre, epsilon) \
+        (((delta) + (epsilon) - (centre)) < ((epsilon) * 2))
 
-#ifdef TEST_MODE
-extern void panic();
-#endif
 
 void rx433_interrupt(void)
 {
@@ -112,64 +111,72 @@ void rx433_interrupt(void)
     // New codes
     switch (nc_state) {
         case NC_RESET:
-            if (IS_CLOSE(delta, PERIOD * 2)) {
-                // indicates a "10" start code
-                nc_state = NC_START;
-                nc_timebase = new_time - (PERIOD / 4);
+            if (IS_CLOSE(delta, NC_PULSE * 3, EPSILON)) {
+                // indicates a "11010" start code - first symbol
+                nc_count = 0;
+                nc_timebase = new_time;
+                nc_state = NC_RECEIVE;
+                memset(nc_buffer, 0, NC_DATA_SIZE);
             }
             break;
-        case NC_START:
-            if (IS_CLOSE(delta, PERIOD * 2)) {
-                // repeat of a "10" start code
-                nc_timebase = new_time - (PERIOD / 4);
-            } else if (IS_CLOSE(delta, PERIOD)) {
-                // indicates a "11" start code following a "10" start code
-                nc_state = NC_RECEIVE;
-                nc_timebase = new_time - (PERIOD / 4);
-            } else if (new_time > (nc_timebase + (PERIOD * 2))) {
-                // invalid code / timeout
-                nc_state = NC_RESET;
+        case NC_CONTINUE:
+            if (IS_CLOSE(delta, NC_PULSE * 3, EPSILON)) {
+                // indicates a "11010" start code - Nth symbol?
+                uint32_t delta2 = new_time - nc_timebase;
+
+                // Skipped any symbols?
+                while ((nc_count < NC_DATA_SIZE)
+                && (delta2 > ((NC_SYMBOL_TIME * 3) / 2))) {
+                    nc_buffer[nc_count] = 0xff; // erasure
+                    nc_count++;
+                    nc_timebase += NC_SYMBOL_TIME;
+                    delta2 = new_time - nc_timebase;
+                }
+
+                if (nc_count >= NC_DATA_SIZE) {
+                    // End of previous (incomplete) message, begin new
+                    memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
+                    rx433_new_code_ready = 1;
+                    nc_count = 0;
+                    nc_timebase = new_time;
+                    nc_state = NC_RECEIVE;
+                    memset(nc_buffer, 0, NC_DATA_SIZE);
+                } else if (IS_CLOSE(delta2, NC_SYMBOL_TIME, EPSILON)) {
+                    // Valid timing for recovery after skipping
+                    nc_timebase = new_time;
+                    nc_state = NC_RECEIVE;
+                } else {
+                    // Not recovered from skipping - this is another
+                    // error, wait more for the start of the next symbol
+                }
             }
             break;
         default: // NC_RECEIVE
             {
-                uint32_t bit = (new_time - nc_timebase) / PERIOD;
-                // bit 0 = second "1" in "11" start code - undefined value in the array
-                // bit 1 = most significant bit in symbol 0
-                // bit 6 = first stop bit
-                // ... etc...
+                uint32_t bit =
+                    (new_time + NC_PULSE - nc_timebase) / (NC_PULSE * 2);
 
-                if (bit < NC_FINAL_BIT) {
-                    nc_buffer[bit / 8] |= 0x80 >> (bit % 8);
+                if (bit == 0) {
+                    // noise within the start bit, ignored
+                } else if (bit <= SYMBOL_SIZE) {
+                    // bit received
+                    nc_buffer[nc_count] |= (1 << SYMBOL_SIZE) >> bit;
+                } else if (bit == (SYMBOL_SIZE + 1)) {
+                    // stop bit
+                    nc_count ++;
+                    if (nc_count >= NC_DATA_SIZE) {
+                        // end of message
+                        memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
+                        nc_state = NC_RESET;
+                        rx433_new_code_ready = 1;
+                    } else {
+                        // symbol ok - wait for start of next symbol
+                        nc_state = NC_CONTINUE;
+                    }
                 } else {
-                    // This is the final bit, or after it
-                    uint32_t i, j;
-                    bit = 0;
-                    // unpack bits into the rx433_new_code array
-                    // Each byte in that array is a symbol (i.e. 3 unused bits)
-                    for (i = 0; i < NC_DATA_SIZE; i++) {
-                        uint8_t unpacked = 0;
-                        bit++; // skip the unused bit at the beginning of the received symbol
-                        for (j = 0; j < SYMBOL_SIZE; j++) {
-                            if (nc_buffer[bit / 8] & (0x80 >> (bit % 8)) ) {
-                                unpacked |= (1 << (SYMBOL_SIZE - 1)) >> j;
-                            }
-                            bit++; // next bit
-                        }
-                        rx433_new_code[i] = unpacked;
-                    }
-#ifdef TEST_MODE    // ensure that array size calculations are correct
-                    if (bit != NC_FINAL_BIT) {
-                        panic();
-                    }
-#endif
-                    // zero the buffer for next use
-                    for (i = 0; i < NC_BUFFER_SIZE; i++) {
-                        nc_buffer[i] = 0;
-                    }
-                    // message is ready
-                    nc_state = NC_RESET;
-                    rx433_new_code_ready = 1;
+                    // symbol lost? Record erasure, await start code for next symbol
+                    nc_buffer[nc_count] = 0xff;
+                    nc_state = NC_CONTINUE;
                 }
             }
             break;

@@ -14,12 +14,6 @@ uint32_t micros()
     return test_time;
 }
 
-void panic()
-{
-    fprintf(stderr, "panic\n");
-    exit(1);
-}
-
 static int matches_test_code(const uint8_t* expect)
 {
     return memcmp(expect, (const uint8_t*) rx433_new_code, NC_DATA_SIZE) == 0;

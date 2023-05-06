@@ -2,19 +2,20 @@
 
 CFLAGS=-I.. -Wall -g
 
-test: test_rx433.exe test_hmac433.exe test_rx433.txt test_hmac433.bin
+test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt test_hmac433.bin test_rs.txt
 	./test_rx433.exe
 	./test_hmac433.exe
+	./test_rs.exe
 
 clean:
-	rm -f *.o ../*.o *.exe test_rx433.txt test_hmac433.bin
+	rm -f *.o ../*.o *.exe test_rx433.txt test_hmac433.bin test_rs.txt
 	rm -rf __pycache__
 
 test_rx433.txt: make_test_rx433.py readcode.py 
 	python make_test_rx433.py
 
 test_rx433.exe: test_rx433.c ../rx433.c ../rx433.h
-	gcc -o test_rx433.exe test_rx433.c ../rx433.c $(CFLAGS) -DTEST_MODE
+	gcc -o test_rx433.exe test_rx433.c ../rx433.c $(CFLAGS)
 
 test_hmac433.bin: make_test_hmac433.py readcode.py 
 	python make_test_hmac433.py
@@ -24,4 +25,10 @@ test_hmac433.exe: test_hmac433.c ../hmac433.c ../hmac433.h \
 					../sha256.c ../sha256.h
 	gcc -o test_hmac433.exe test_hmac433.c ../hmac433.c \
 				../hmac.c ../sha256.c $(CFLAGS)
+
+test_rs.txt: make_test_rs.py readcode.py 
+	python make_test_rs.py
+
+test_rs.exe: test_rs.c ../rx433.c ../rx433.h ../reed_solomon.c ../rslib.h ../decode_rs.h
+	gcc -o test_rs.exe test_rs.c ../rx433.c ../reed_solomon.c $(CFLAGS)
 

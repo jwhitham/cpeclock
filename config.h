@@ -1,0 +1,1 @@
+#define CONFIG_REED_SOLOMON_DEC8

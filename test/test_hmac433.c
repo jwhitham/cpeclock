@@ -48,34 +48,37 @@ int main(void)
         return 1;
     }
     while (1){
-        uint8_t packet[MAX_PACKET_SIZE];
+        hmac433_packet_t packet;
         uint8_t size = 0;
         uint8_t action = 0;
         off_t pos = ftell(fd);
+        char payload[PACKET_PAYLOAD_SIZE + 1];
 
         if (!((fread(&size, 1, 1, fd) == 1) 
         && (fread(&action, 1, 1, fd) == 1))) {
             break;
         }
 
-        if (size > MAX_PACKET_SIZE) {
-            fprintf(stderr, "error with packet size!\n");
+        if (size != sizeof(hmac433_packet_t)) {
+            fprintf(stderr, "error with packet size! size in file %d size in memory %d\n",
+                (int) size, (int) sizeof(hmac433_packet_t));
             return 1;
         }
-        if (fread(packet, size, 1, fd) != 1) {
+        if (fread(&packet, size, 1, fd) != 1) {
             perror("reading test_mac.bin");
             return 1;
         }
+        memcpy(payload, packet.payload, PACKET_PAYLOAD_SIZE);
+        payload[PACKET_PAYLOAD_SIZE] = '\0';
         if (action & 2) {
             counter += (uint64_t) 1 << (uint64_t) 60;
         }
         if ((action & 1) != hmac433_authenticate(
                 (const uint8_t*) "secret", 6,
-                packet, size,
+                &packet,
                 &counter)) {
-            packet[size - 8] = '\0';
             fprintf(stderr, "error with authentication, packet at %d, expected outcome %d: %s\n",
-                        (int) pos, action & 1, packet);
+                        (int) pos, action & 1, payload);
             return 1;
         }
     }

@@ -6,24 +6,23 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <fec.h>
-
-#define SYMBOL_SIZE     (5)     // 5 bits per symbol
-#define NROOTS          (10)    // 10 parity symbols
-#define MSG_SYMBOLS     (21)    // 21 message symbols
-#define GFPOLY          (0x25)  // Reed Solomon Galois field polynomial
-#define FCR             (1)     // First Consecutive Root
-#define PRIM            (1)     // Primitive Element
-#define PAD             (0)     // No padding
 
 
-int main(void)
+#include "ncrs.h"
+
+int main(int argc, char** argv)
 {
     void*   reed_solomon;
     uint8_t message[MSG_SYMBOLS + NROOTS];
     size_t  i;
     int     rc;
     int     fd;
+
+    if (!ncrs_init()) {
+        printf("rs = null\n");
+        return 1;
+    }
+
 
     reed_solomon = init_rs_char(SYMBOL_SIZE, GFPOLY, FCR, PRIM, NROOTS, PAD);
     if (!reed_solomon) {

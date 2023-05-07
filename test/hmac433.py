@@ -8,6 +8,9 @@ import os
 SECRET_SIZE = 56
 STATE_FILE = os.path.join(os.environ.get("APPDATA",
                     os.environ.get("HOME", ".")), ".hmac433.dat")
+PACKET_PAYLOAD_SIZE = 6
+PACKET_HMAC_SIZE = 6
+PACKET_SIZE = (PACKET_HMAC_SIZE + 1 + PACKET_PAYLOAD_SIZE)
 
 
 class HMAC433:
@@ -30,22 +33,26 @@ class HMAC433:
     def encode_packet(self, payload: bytes) -> bytes:
         index = self.counter
 
+        while len(payload) < PACKET_PAYLOAD_SIZE:
+            payload += b"\x00"
+        payload = payload[:PACKET_PAYLOAD_SIZE]
+
         index_byte = struct.pack("<B", index & 0xff)
 
         mac_bytes = hmac.digest(
                 key=self.get_key_for_index(index),
-                msg=payload + index_byte,
-                digest='sha256')[:7]
+                msg=payload,
+                digest='sha256')[:PACKET_HMAC_SIZE]
 
         self.counter = index + 1
         output = payload + index_byte + mac_bytes
         return output
 
     def decode_packet(self, packet: bytes) -> typing.Optional[bytes]:
-        assert len(packet) > 8
-        mac_bytes = packet[-7:]
-        index_byte = packet[-8:-7]
-        payload = packet[:-8]
+        assert len(packet) == PACKET_SIZE
+        mac_bytes = packet[PACKET_PAYLOAD_SIZE + 1:]
+        index_byte = packet[PACKET_PAYLOAD_SIZE:PACKET_PAYLOAD_SIZE + 1]
+        payload = packet[:PACKET_PAYLOAD_SIZE]
 
         (partial_index, ) = struct.unpack("<B", index_byte)
         index = (self.counter & ~0xff) | partial_index
@@ -54,8 +61,8 @@ class HMAC433:
 
         if mac_bytes == hmac.digest(
                 key=self.get_key_for_index(index),
-                msg=payload + index_byte,
-                digest='sha256')[:7]:
+                msg=payload,
+                digest='sha256')[:PACKET_HMAC_SIZE]:
             # accepted - cancel used or skipped keys
             self.counter = index + 1
             return payload

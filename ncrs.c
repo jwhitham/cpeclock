@@ -33,6 +33,7 @@ int ncrs_decode(uint8_t *decoded_message, const uint8_t *encoded_message)
     uint8_t data[MSG_SYMBOLS];
     uint16_t parity[NROOTS];
     size_t i, j, k;
+    int corrections;
 
     for (i = 0; i < NC_DATA_SIZE; i++) {
         uint8_t value = encoded_message[i];
@@ -42,7 +43,8 @@ int ncrs_decode(uint8_t *decoded_message, const uint8_t *encoded_message)
             parity[i - MSG_SYMBOLS] = value;
         }
     }
-    if (decode_rs8(rs, data, parity, MSG_SYMBOLS, NULL, 0, NULL, 0, NULL) < 0) {
+    corrections = decode_rs8(rs, data, parity, MSG_SYMBOLS, NULL, 0, NULL, 0, NULL);
+    if (corrections < 0) {
         // too many errors, cannot decode
         return 0;
     }
@@ -52,6 +54,6 @@ int ncrs_decode(uint8_t *decoded_message, const uint8_t *encoded_message)
             decoded_message[k / 8] |= (((data[i] >> (j - 1))) & 1) << (7 - (k % 8));
         }
     }
-    return 1;
+    return corrections + 1;
 }
 

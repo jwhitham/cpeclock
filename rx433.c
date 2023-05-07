@@ -8,6 +8,7 @@
 #define EPSILON  0x30
 
 #define NC_SYMBOL_TIME      ((NC_PULSE * 5) + (NC_PULSE * 2 * SYMBOL_SIZE))
+#define MAX_INCOMPLETE_SKIP (5) // maximum symbols that can be skipped at the end of a message
 
 extern uint32_t micros();
 
@@ -110,18 +111,20 @@ void rx433_interrupt(void)
     //
     if (IS_CLOSE(delta, NC_PULSE * 3, EPSILON)) {
         // indicates a "11010" start code - Nth symbol?
+        uint32_t skip = 0;
 
         // Skipped any symbols?
         while ((nc_count < NC_DATA_SIZE)
         && (delta2 > ((NC_SYMBOL_TIME * 3) / 2))) {
             nc_count++;
+            skip++;
             nc_timebase += NC_SYMBOL_TIME;
             delta2 = new_time - nc_timebase;
         }
 
         if (nc_count >= NC_DATA_SIZE) {
             // New message
-            if (nc_count == NC_DATA_SIZE) {
+            if ((nc_count == NC_DATA_SIZE) && (skip <= MAX_INCOMPLETE_SKIP)) {
                 // Force end of previous incomplete message
                 memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
                 rx433_new_code_ready = 1;
@@ -161,9 +164,11 @@ void rx433_interrupt(void)
                 }
             }
         } else {
-            // Force end of incomplete message
-            memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
-            rx433_new_code_ready = 1;
+            if ((nc_count + MAX_INCOMPLETE_SKIP) >= NC_DATA_SIZE) {
+                // Force end of incomplete message (as the number of skipped words <= MAX_INCOMPLETE_SKIP)
+                memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
+                rx433_new_code_ready = 1;
+            }
             nc_count = ~0;
         }
     }

@@ -8,7 +8,7 @@ def main():
         read_edges("rstest1.csv", 1e-3),
         read_edges("rstest2.csv", 1e-3),
         read_edges("rstest3.csv", 1e-3),
-        read_edges("rstest4.csv", 1e-3) + [(i * 0.001, True) for i in range(100)],
+        read_edges("rstest4.csv", 1e-3),
         read_edges("rstest5.csv", 1e-3),
     ]
 

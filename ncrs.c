@@ -28,32 +28,61 @@ int ncrs_init(void)
     return 1;
 }
 
-int ncrs_decode(uint8_t *decoded_message, const uint8_t *encoded_message)
+int ncrs_decode(uint8_t *original_message, const uint8_t *encoded_message)
 {
     uint8_t data[MSG_SYMBOLS];
     uint16_t parity[NROOTS];
     size_t i, j, k;
     int corrections;
 
-    for (i = 0; i < NC_DATA_SIZE; i++) {
-        uint8_t value = encoded_message[i];
-        if (i < MSG_SYMBOLS) {
-            data[i] = value;
-        } else {
-            parity[i - MSG_SYMBOLS] = value;
-        }
+    // Copy interleaved data and parity
+    for (i = j = 0; j < (NROOTS * 2); i += 3, j += 2) {
+        data[j + 0] = encoded_message[i + 0];
+        data[j + 1] = encoded_message[i + 1];
+        parity[j / 2] = encoded_message[i + 2];
     }
+    data[j] = encoded_message[i];   // last data symbol
+
     corrections = decode_rs8(rs, data, parity, MSG_SYMBOLS, NULL, 0, NULL, 0, NULL);
     if (corrections < 0) {
         // too many errors, cannot decode
         return 0;
     }
-    memset(decoded_message, 0, DECODED_DATA_BYTES);
+
+    // unpack bits from symbols
+    memset(original_message, 0, DECODED_DATA_BYTES);
     for (i = k = 0; i < MSG_SYMBOLS; i++) {
         for (j = SYMBOL_SIZE; j > 0; j--, k++) {
-            decoded_message[k / 8] |= (((data[i] >> (j - 1))) & 1) << (7 - (k % 8));
+            original_message[k / 8] |= (((data[i] >> (j - 1))) & 1) << (7 - (k % 8));
         }
     }
     return corrections + 1;
+}
+
+void ncrs_encode(uint8_t *encoded_message, const uint8_t *original_message)
+{
+    uint8_t data[MSG_SYMBOLS];
+    uint16_t parity[NROOTS];
+    size_t i, j, k;
+
+    // Pack bits into symbols
+    memset(data, 0, sizeof(data));
+    for (i = k = 0; i < MSG_SYMBOLS; i++) {
+        for (j = SYMBOL_SIZE; j > 0; j--, k++) {
+            data[i] |= ((original_message[k / 8] << (7 - (k % 8))) & 1) << (j - 1);
+        }
+    }
+    
+    // Encode
+    memset(parity, 0, sizeof(parity));
+    encode_rs8(rs, data, MSG_SYMBOLS, parity, 0);
+
+    // Copy interleaved data and parity
+    for (i = j = 0; j < (NROOTS * 2); i += 3, j += 2) {
+        encoded_message[i + 0] = data[j + 0];
+        encoded_message[i + 1] = data[j + 1];
+        encoded_message[i + 2] = parity[j / 2];
+    }
+    encoded_message[i] = data[j]; // last data symbol
 }
 

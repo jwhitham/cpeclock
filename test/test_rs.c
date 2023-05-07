@@ -71,6 +71,11 @@ static int scan_file(const char* filename, int allow_bad_data)
                         fprintf(stderr, "%02x", decoded[i]);
                     }
                     fprintf(stderr, "\n");
+                    fprintf(stderr, "original message:");
+                    for (i = 0; i < NC_DATA_SIZE; i++) {
+                        fprintf(stderr, " %d", rx433_new_code[i]);
+                    }
+                    fprintf(stderr, "\n");
                     exit(1);
                 }
             }

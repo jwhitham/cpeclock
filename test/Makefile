@@ -26,7 +26,9 @@ test_hmac433.exe: test_hmac433.c ../hmac433.c ../hmac433.h \
 	gcc -o test_hmac433.exe test_hmac433.c ../hmac433.c \
 				../hmac.c ../sha256.c $(CFLAGS)
 
-test_rs.exe: test_rs.c ../reed_solomon.c ../rslib.h ../decode_rs.h ../encode_rs.h \
-					../ncrs.c ../ncrs.h
-	gcc -o test_rs.exe test_rs.c ../ncrs.c ../reed_solomon.c $(CFLAGS)
+test_rs.exe: test_rs.c \
+					../reed_solomon.c ../rslib.h ../decode_rs.h ../encode_rs.h \
+					../ncrs.c ../ncrs.h \
+					../sha256.c ../sha256.h
+	gcc -o test_rs.exe test_rs.c ../ncrs.c ../sha256.c ../reed_solomon.c $(CFLAGS)
 

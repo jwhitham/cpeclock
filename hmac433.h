@@ -22,6 +22,11 @@ int hmac433_authenticate(
         size_t secret_size,
         const hmac433_packet_t* packet,
         uint64_t* counter);
+void hmac433_encode(
+        const uint8_t* secret_data,
+        size_t secret_size,
+        hmac433_packet_t* packet,
+        uint64_t* counter);
 
 
 #ifdef __cplusplus

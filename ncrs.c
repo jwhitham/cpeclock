@@ -35,7 +35,7 @@ int ncrs_decode(uint8_t *original_message, const uint8_t *encoded_message)
     size_t i, j, k;
     int corrections;
 
-    // Copy interleaved data and parity
+    // Copy interleaved data and earity
     for (i = j = 0; j < (NROOTS * 2); i += 3, j += 2) {
         data[j + 0] = encoded_message[i + 0];
         data[j + 1] = encoded_message[i + 1];
@@ -69,7 +69,7 @@ void ncrs_encode(uint8_t *encoded_message, const uint8_t *original_message)
     memset(data, 0, sizeof(data));
     for (i = k = 0; i < MSG_SYMBOLS; i++) {
         for (j = SYMBOL_SIZE; j > 0; j--, k++) {
-            data[i] |= ((original_message[k / 8] << (7 - (k % 8))) & 1) << (j - 1);
+            data[i] |= ((uint8_t) (original_message[k / 8] << (k % 8)) >> 7) << (j - 1);
         }
     }
     

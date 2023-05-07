@@ -2,7 +2,7 @@
 
 CFLAGS=-I.. -Wall -g
 
-test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt test_hmac433.bin test_rs.txt
+test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt test_hmac433.bin
 	./test_rx433.exe
 	./test_hmac433.exe
 	./test_rs.exe
@@ -26,10 +26,7 @@ test_hmac433.exe: test_hmac433.c ../hmac433.c ../hmac433.h \
 	gcc -o test_hmac433.exe test_hmac433.c ../hmac433.c \
 				../hmac.c ../sha256.c $(CFLAGS)
 
-test_rs.txt: make_test_rs.py readcode.py 
-	python make_test_rs.py
-
-test_rs.exe: test_rs.c ../rx433.c ../rx433.h ../reed_solomon.c ../rslib.h ../decode_rs.h \
+test_rs.exe: test_rs.c ../reed_solomon.c ../rslib.h ../decode_rs.h ../encode_rs.h \
 					../ncrs.c ../ncrs.h
-	gcc -o test_rs.exe test_rs.c ../rx433.c ../ncrs.c ../reed_solomon.c $(CFLAGS)
+	gcc -o test_rs.exe test_rs.c ../ncrs.c ../reed_solomon.c $(CFLAGS)
 

@@ -29,6 +29,7 @@ test_hmac433.exe: test_hmac433.c ../hmac433.c ../hmac433.h \
 test_rs.txt: make_test_rs.py readcode.py 
 	python make_test_rs.py
 
-test_rs.exe: test_rs.c ../rx433.c ../rx433.h ../reed_solomon.c ../rslib.h ../decode_rs.h
-	gcc -o test_rs.exe test_rs.c ../rx433.c ../reed_solomon.c $(CFLAGS)
+test_rs.exe: test_rs.c ../rx433.c ../rx433.h ../reed_solomon.c ../rslib.h ../decode_rs.h \
+					../ncrs.c ../ncrs.h
+	gcc -o test_rs.exe test_rs.c ../rx433.c ../ncrs.c ../reed_solomon.c $(CFLAGS)
 

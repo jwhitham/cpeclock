@@ -114,7 +114,6 @@ void rx433_interrupt(void)
         // Skipped any symbols?
         while ((nc_count < NC_DATA_SIZE)
         && (delta2 > ((NC_SYMBOL_TIME * 3) / 2))) {
-            nc_buffer[nc_count] = ~0; // erasure
             nc_count++;
             nc_timebase += NC_SYMBOL_TIME;
             delta2 = new_time - nc_timebase;
@@ -145,10 +144,7 @@ void rx433_interrupt(void)
 
             if (bit == 0) {
                 // Ignore noise in start bit
-            } else if (!IS_CLOSE(expect, delta2, EPSILON)) {
-                // Bit is not acceptable. Record erasure, await start code for next symbol
-                nc_buffer[nc_count] = ~0;
-            } else {
+            } else if (IS_CLOSE(expect, delta2, EPSILON)) {
                 // Bit is acceptable
                 if (bit < (SYMBOL_SIZE + 1)) {
                     // data bit

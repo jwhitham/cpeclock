@@ -5,14 +5,7 @@
 #include <string.h>
 
 #include "rx433.h"
-#include "rslib.h"
-
-#define NROOTS          (10)    // 10 parity symbols
-#define MSG_SYMBOLS     (21)    // 21 message symbols
-#define GFPOLY          (0x25)  // Reed Solomon Galois field polynomial
-#define FCR             (1)     // First Consecutive Root
-#define PRIM            (1)     // Primitive Element
-#define PAD             (0)     // No padding
+#include "ncrs.h"
 
 uint32_t test_time = 0;
 extern void rx433_interrupt(void);
@@ -22,16 +15,20 @@ uint32_t micros()
     return test_time;
 }
 
+void display_message(const char* m)
+{
+    printf("message: %s\n", m);
+    exit(1);
+}
+
 int main(void)
 {
     FILE* fd;
     unsigned test_ok = 0;
     unsigned test_bad = 0;
-    struct rs_control *rs = NULL;
 
 
-    rs = init_rs(SYMBOL_SIZE, GFPOLY, FCR, PRIM, NROOTS);
-    if (!rs) {
+    if (!ncrs_init()) {
         printf("rs = null\n");
         return 1;
     }
@@ -49,77 +46,21 @@ int main(void)
             return 1;
         }
         if (rx433_new_code_ready) {
-            uint8_t data[MSG_SYMBOLS];
-            uint8_t copy[MSG_SYMBOLS];
-            int erasures[NC_DATA_SIZE];
-            uint16_t parity[NROOTS];
-            int num_erasures = 0;
-            int i, num_errors;
-            int wrong = 0;
-            int nonzero = 0;
-            double test_time_f = test_time / 1e6;
-            int show = 0;
-
-            for (i = 0; i < NC_DATA_SIZE; i++) {
-                uint8_t value = rx433_new_code[i];
-                if (value >= (1 << SYMBOL_SIZE)) {
-                    erasures[num_erasures] = i;
-                    num_erasures++;
-                    value = 0;
-                }
-                if (i < MSG_SYMBOLS) {
-                    data[i] = value;
-                    copy[i] = value;
-                } else {
-                    parity[i - MSG_SYMBOLS] = value;
-                }
-            }
-
-            // Don't tell it the erasures! It doesn't correct them!
-            num_erasures = 0;
-            num_errors = decode_rs8(rs, data, parity, MSG_SYMBOLS, NULL, num_erasures, erasures, 0, NULL);
-            wrong = 0;
-            for (i = 0; i < MSG_SYMBOLS; i++) {
-                if (data[i] != (i ^ ((1 << SYMBOL_SIZE) - 1))) {
-                    wrong = 1;
-                }
-                if (data[i] != 0) {
-                    nonzero = 1;
-                }
-            }
-            if (wrong && (!nonzero) && (num_errors >= 0)) {
-                printf("%1.1f: Zero\n", test_time_f);
-            } else if (wrong && (num_errors >= 0)) {
-                printf("%1.1f: Bad message; not detected by ECC (err %d):", test_time_f, num_errors);
-                show = 1;
-                test_bad++;
-            } else if (wrong) {
-                printf("%1.1f: Bad message rejected as uncorrectable: ", test_time_f);
-                show = 1;
-            } else if (num_errors < 0) {
-                printf("%1.1f: Good message rejected as uncorrectable\n", test_time_f);
-                test_bad++;
-            } else if (num_errors > 0) {
-                printf("%1.1f: Good message corrected by ECC (err: %d)\n", test_time_f, num_errors);
-                test_ok++;
+            uint8_t decoded[DECODED_DATA_BYTES];
+            if (!ncrs_decode(decoded, (const uint8_t*) rx433_new_code)) {
+                printf("decode failed\n");
             } else {
-                printf("%1.1f: Good message without correction\n", test_time_f);
-                test_ok++;
-            }
-            if (show) {
-                for (i = 0; i < MSG_SYMBOLS; i++) {
-                    if (data[i] != copy[i]) {
-                        printf(" %d>%d", copy[i], data[i]);
-                    } else {
-                        printf(" %d", data[i]);
-                    }
+                size_t i;
+                // "ffbbcdeb38bdab49ca307b9ac580"
+                printf("decode: ");
+                for (i = 0; i < DECODED_DATA_BYTES; i++) {
+                    printf("%02x", decoded[i]);
                 }
                 printf("\n");
             }
         }
     }
     fclose(fd);
-    free_rs(rs);
     printf("%u %u\n", test_ok, test_bad);
     return 0;
 }

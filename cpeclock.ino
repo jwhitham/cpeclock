@@ -33,7 +33,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 RTC_DS1307 rtc;     // RTC address 0x68
 
-extern "C" void set_int_pin(char value);
 
 void set_int_pin(char value)
 {
@@ -117,6 +116,11 @@ uint8_t nvram_read(uint8_t addr)
 void nvram_write(uint8_t addr, uint8_t data)
 {
     rtc.writenvram(addr, data);
+}
+
+void set_clock(uint8_t hour, uint8_t minute, uint8_t second)
+{
+    rtc.adjust(DateTime(2012, 4, 14, hour, minute, second));
 }
 
 void disable_interrupts(void)

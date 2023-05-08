@@ -97,9 +97,15 @@ static void new_packet(const uint8_t* payload, int rs_rc)
             break;
         case 'C':
             // show counter
-            snprintf(tmp, sizeof(tmp), "C %08x E %d",
-                    (unsigned) hmac_message_counter, rs_rc);
+            snprintf(tmp, sizeof(tmp), "C %04x E %d",
+                    (unsigned) (hmac_message_counter & 0xffff),
+                    rs_rc);
             display_message(tmp);
+            break;
+        case 'T':
+            // set time
+            set_clock(payload[1], payload[2], payload[3]);
+            display_message("SET TIME");
             break;
         default:
             display_message("ACTION ERROR");

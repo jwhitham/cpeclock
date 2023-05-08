@@ -14,6 +14,10 @@ uint32_t micros()
     return test_time;
 }
 
+void set_int_pin(char pin)
+{
+}
+
 static int matches_test_code(const uint8_t* expect)
 {
     return memcmp(expect, (const uint8_t*) rx433_new_code, NC_DATA_SIZE) == 0;

@@ -1,6 +1,7 @@
 
 #include <string.h>
 #include "rx433.h"
+#include "hal.h"
 
 
 // constants for new codes
@@ -9,8 +10,6 @@
 
 #define NC_SYMBOL_TIME      ((NC_PULSE * 5) + (NC_PULSE * 2 * SYMBOL_SIZE))
 #define MAX_INCOMPLETE_SKIP (5) // maximum symbols that can be skipped at the end of a message
-
-extern uint32_t micros();
 
 static uint32_t old_time = 0;
 
@@ -126,12 +125,14 @@ void rx433_interrupt(void)
             // New message
             if ((nc_count == NC_DATA_SIZE) && (skip <= MAX_INCOMPLETE_SKIP)) {
                 // Force end of previous incomplete message
+                set_int_pin(0);
                 memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
                 rx433_new_code_ready = 1;
             }
             nc_count = 0;
             nc_timebase = new_time;
             memset(nc_buffer, 0, NC_DATA_SIZE);
+            set_int_pin(1);
         } else if (IS_CLOSE(delta2, NC_SYMBOL_TIME, EPSILON)) {
             // Message continues
             nc_timebase = new_time;
@@ -160,6 +161,7 @@ void rx433_interrupt(void)
                         memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
                         rx433_new_code_ready = 1;
                         nc_count = ~0;
+                        set_int_pin(0);
                     }
                 }
             }
@@ -170,6 +172,7 @@ void rx433_interrupt(void)
                 rx433_new_code_ready = 1;
             }
             nc_count = ~0;
+            set_int_pin(0);
         }
     }
 }

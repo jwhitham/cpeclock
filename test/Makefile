@@ -2,13 +2,13 @@
 
 CFLAGS=-I.. -Wall -g
 
-test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt test_hmac433.bin
+test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt txnc433.exe
 	./test_rx433.exe
 	./test_hmac433.exe
 	./test_rs.exe
 
 clean:
-	rm -f *.o ../*.o *.exe test_rx433.txt test_hmac433.bin test_rs.txt
+	rm -f *.o ../*.o *.exe test_rx433.txt
 	rm -rf __pycache__
 
 test_rx433.txt: make_test_rx433.py readcode.py 
@@ -17,10 +17,8 @@ test_rx433.txt: make_test_rx433.py readcode.py
 test_rx433.exe: test_rx433.c ../rx433.c ../rx433.h
 	gcc -o test_rx433.exe test_rx433.c ../rx433.c $(CFLAGS)
 
-test_hmac433.bin: make_test_hmac433.py readcode.py 
-	python make_test_hmac433.py
-
-test_hmac433.exe: test_hmac433.c ../hmac433.c ../hmac433.h \
+test_hmac433.exe: test_hmac433.c \
+					../hmac433.c ../hmac433.h \
 					../hmac.c ../hmac.h \
 					../sha256.c ../sha256.h
 	gcc -o test_hmac433.exe test_hmac433.c ../hmac433.c \
@@ -32,3 +30,11 @@ test_rs.exe: test_rs.c \
 					../sha256.c ../sha256.h
 	gcc -o test_rs.exe test_rs.c ../ncrs.c ../sha256.c ../reed_solomon.c $(CFLAGS)
 
+txnc433.exe: txnc433.c \
+					../hmac433.c ../hmac433.h \
+					../hmac.c ../hmac.h \
+					../reed_solomon.c ../rslib.h ../decode_rs.h ../encode_rs.h \
+					../ncrs.c ../ncrs.h \
+					../sha256.c ../sha256.h
+	gcc -o txnc433.exe txnc433.c ../ncrs.c ../sha256.c \
+				../hmac433.c ../hmac.c ../reed_solomon.c $(CFLAGS)

@@ -76,12 +76,13 @@ int main(int argc, char** argv)
     memset(&secret_file, 0, sizeof(secret_file));
 
     if (!ncrs_init()) {
-        printf("rs = null\n");
+        fprintf(stderr, "rs = null\n");
         return 1;
     }
 
     if (!load_secret_file("APPDATA") && !load_secret_file("HOME")) {
-        printf("Unable to find the secret file '%s' in either $HOME or $APPDATA\n", secret_file_name);
+        fprintf(stderr,
+                "Unable to find the secret file '%s' in either $HOME or $APPDATA\n", secret_file_name);
         return 1;
     }
 
@@ -89,8 +90,27 @@ int main(int argc, char** argv)
         packet.payload[i - 1] = (uint8_t) strtol(argv[i], NULL, 0);
     }
 
-    hmac433_encode(secret_file.secret_data, sizeof(secret_file.secret_data), &packet, &secret_file.counter);
+    hmac433_encode(secret_file.secret_data, sizeof(secret_file.secret_data),
+                   &packet, &secret_file.counter);
     ncrs_encode(message, (const uint8_t *) &packet);
+
+    // Test that the packet can be decoded ok
+    {
+        hmac433_packet_t    packet2;
+        uint64_t            counter2 = secret_file.counter - 1;
+
+        ncrs_decode((uint8_t *) &packet2, message);
+        if (memcmp(&packet2, &packet, sizeof(packet)) != 0) {
+            fprintf(stderr, "loopback test RS decoding failed\n");
+            return 1;
+        }
+        if (!hmac433_authenticate(secret_file.secret_data, sizeof(secret_file.secret_data),
+                        &packet2, &counter2)) {
+            fprintf(stderr, "loopback test authentication failed\n");
+            return 1;
+        }
+    }
+
     save_secret_file();
 
     for (i = 0; i < NC_DATA_SIZE; i++) {

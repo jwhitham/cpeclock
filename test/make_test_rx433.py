@@ -63,7 +63,9 @@ def main():
         read_edges("test6a.csv", 1e-3),     # clean recording
         read_edges("test7.csv", 1e-3),      # clean recording
         read_edges("test6.csv", 1e-3),      # noisy
-        [(i * 0.001, True) for i in range(100)]
+        [(i * 0.001, True) for i in range(100)],
+        read_edges("test9.csv", 1e-3),      # noisy
+        [(i * 0.001, True) for i in range(100)],
     ]
 
     with open("test_rx433.txt", "wt") as fd:

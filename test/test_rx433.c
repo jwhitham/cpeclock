@@ -39,6 +39,8 @@ static uint8_t TEST_CODE_7[] =
     {29, 8, 6, 28, 26, 22, 1, 13, 24, 28, 18, 31, 27, 26, 1, 30, 19, 28, 24, 2, 9, 22, 11, 22, 27, 6, 18, 31, 6, 8, 12};
 static uint8_t TEST_CODE_6_NOISY[] =
     {24, 31, 19, 20, 1, 2, 26, 28, 23, 16, 23, 21, 25, 11, 1, 14, 2, 20, 5, 5, 9, 10, 2, 15, 15, 11, 13, 30, 21, 31, 0};
+static uint8_t TEST_CODE_9[] =
+    {8, 12, 17, 0, 0, 28, 0, 0, 4, 0, 0, 16, 0, 1, 18, 10, 2, 18, 30, 13, 0, 31, 26, 12, 11, 15, 19, 30, 22, 23, 14};
 
 
 int main(void)
@@ -82,6 +84,7 @@ int main(void)
             if (matches_test_code(TEST_CODE_6)) { c = 6; }
             if (matches_test_code(TEST_CODE_7)) { c = 7; }
             if (matches_test_code(TEST_CODE_6_NOISY)) { c = 8; }
+            if (matches_test_code(TEST_CODE_9)) { c = 9; }
 
             if (c != 0) {
                 test3_count++;

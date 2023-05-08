@@ -7,6 +7,7 @@
 #include "hmac433.h"
 #include "hal.h"
 #include "mail.h"
+#include "ncrs.h"
 
 #include "secret.h"
 
@@ -21,7 +22,7 @@
 #define NVRAM_SIZE              0x13
 
 static uint64_t hmac_message_counter = 0;
-static uint32_t previous_msg[MAX_CODE_LENGTH / 32] = {0};
+static hmac433_packet_t previous_packet;
 
 static void save_counter(void)
 {
@@ -38,7 +39,15 @@ static void save_counter(void)
 
 int mail_init(void)
 {
-    uint8_t state = nvram_read(NVRAM_STATE_ADDR);
+    uint8_t state;
+
+    if (DECODED_DATA_BYTES != sizeof(hmac433_packet_t)) {
+        // DECODED_DATA_BYTES must be equal to sizeof(hmac433_packet_t)
+        display_message("SIZE ERROR");
+        return 0;
+    }
+
+    state = nvram_read(NVRAM_STATE_ADDR);
     if ((nvram_read(NVRAM_CHECK_BYTE_1_ADDR) != CHECK_BYTE_1_VALUE)
     || (nvram_read(NVRAM_CHECK_BYTE_2_ADDR) != CHECK_BYTE_2_VALUE)
     || (state > 1)) {
@@ -68,84 +77,93 @@ int mail_init(void)
     }
 }
 
-void mail_receive_messages(void)
+static void new_home_easy_message(uint32_t msg)
 {
-    uint32_t msg_data_words[MAX_CODE_LENGTH / 32];
-    uint8_t* msg_data_bytes = (uint8_t*) msg_data_words;
-    size_t msg_count_bits = 0;
-    size_t msg_count_bytes = 0;
-    size_t i;
     char tmp[16];
-    uint8_t new_message = 0;
+    snprintf(tmp, sizeof(tmp), "HE %08x", (unsigned) msg);
+    display_message(tmp);
+}
 
-    // critical section to obtain any new messages
-    disable_interrupts();
-    if (rx433_count) {
-        msg_count_bits = rx433_count;
-        for (i = 0; i < (MAX_CODE_LENGTH / 32); i++) {
-            msg_data_words[i] = rx433_data[i];
-        }
-        rx433_count = 0;
-    }
-    enable_interrupts();
+static void new_packet(const uint8_t* payload, int rs_rc)
+{
+    char tmp[16];
 
-    if (msg_count_bits == 32) {
-        // Home Easy message
-        snprintf(tmp, sizeof(tmp), "HE: %02x%02x%02x%02x",
-                    msg_data_bytes[0], msg_data_bytes[1],
-                    msg_data_bytes[2], msg_data_bytes[3]);
-        display_message(tmp);
-        return;
-    }
-
-    if (msg_count_bits < 72) {
-        // minimum length of HMAC message is 72 bits
-        // (64 bits for HMAC code and counter, 8 bits minimum payload)
-        return;
-    }
-    // Don't reprocess the same message
-    for (i = 0; i < (MAX_CODE_LENGTH / 32); i++) {
-        if (previous_msg[i] != msg_data_words[i]) {
-            previous_msg[i] = msg_data_words[i];
-            new_message = 1;
-        }
-    }
-    if (!new_message) {
-        return;
-    }
-
-    // Authenticate message
-    msg_count_bytes = (msg_count_bits + 7) / 8;
-    if (!hmac433_authenticate(
-                SECRET_DATA, SECRET_SIZE,
-                msg_data_bytes, msg_count_bytes,
-                &hmac_message_counter)) {
-        // message does not authenticate
-        display_message("HMAC ERROR");
-        return;
-    }
-
-    // update counters
-    save_counter();
-
-    // remove HMAC code and counter
-    msg_count_bytes -= 8;
-
-    switch (msg_data_bytes[0]) {
+    switch (payload[0]) {
         case 'M':
             // message for the screen
-            msg_data_bytes[msg_count_bytes] = '\0';
-            display_message((const char*) &msg_data_bytes[1]);
+            memcpy(tmp, &payload[1], PACKET_PAYLOAD_SIZE - 1);
+            tmp[PACKET_PAYLOAD_SIZE] = '\0';
+            display_message(tmp);
             break;
         case 'C':
             // show counter
-            snprintf(tmp, sizeof(tmp), "C: %08x",
-                    (uint32_t) hmac_message_counter);
+            snprintf(tmp, sizeof(tmp), "C %08x E %d",
+                    (unsigned) hmac_message_counter, rs_rc);
             display_message(tmp);
             break;
         default:
             display_message("ACTION ERROR");
             break;
     }
+}
+
+void mail_receive_messages(void)
+{
+    uint32_t    copy_home_easy = 0;
+    uint8_t     copy_new_code[NC_DATA_SIZE];
+    uint8_t     copy_new_code_ready = 0;
+    hmac433_packet_t packet;
+    int         rs_rc;
+
+    // critical section to obtain any new messages
+    disable_interrupts();
+    if (rx433_home_easy) {
+        copy_home_easy = rx433_home_easy;
+        rx433_home_easy = 0;
+    }
+    if (rx433_new_code_ready) {
+        memcpy(copy_new_code, (const uint8_t*) rx433_new_code, NC_DATA_SIZE);
+        rx433_new_code_ready = 0;
+        copy_new_code_ready = 1;
+    }
+    enable_interrupts();
+
+    if (copy_home_easy) {
+        // Process Home Easy message
+        new_home_easy_message(copy_home_easy);
+    }
+
+    if (!copy_new_code_ready) {
+        // No messages
+        return;
+    }
+
+    // Process new code
+    // Reed Solomon decoding
+    rs_rc = ncrs_decode((uint8_t*) &packet, copy_new_code);
+    if (rs_rc <= 0) {
+        display_message("RS ERROR");
+        return;
+    }
+
+    // Same as last code? Quickly reject a rebroadcast
+    if (memcmp(&previous_packet, &packet, sizeof(packet)) == 0) {
+        return;
+    }
+    memcpy(&previous_packet, &packet, sizeof(packet));
+
+    // HMAC authentication
+    if (!hmac433_authenticate(
+                SECRET_DATA, SECRET_SIZE,
+                &packet, &hmac_message_counter)) {
+        display_message("HMAC ERROR");
+        return;
+    }
+
+    // update HMAC counter in NVRAM
+    save_counter();
+
+    // process packet payload
+    new_packet(packet.payload, rs_rc);
 }
 

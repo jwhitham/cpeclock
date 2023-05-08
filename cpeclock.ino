@@ -12,6 +12,7 @@
 #include "rx433.h"
 #include "mail.h"
 #include "hal.h"
+#include "ncrs.h"
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -89,13 +90,19 @@ void setup()
             for(;;);
         }
     }
-    attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
+    if (!ncrs_init()) {
+        Serial.println("ncrs_init() failed");
+        Serial.flush();
+        for(;;);
+    }
 
     if (!mail_init()) {
         Serial.println("mail_init() failed");
         Serial.flush();
         for(;;);
     }
+
+    attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
     digitalWrite(LED_BUILTIN, LOW);
     Serial.println("Booted");

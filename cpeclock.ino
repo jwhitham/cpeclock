@@ -63,6 +63,7 @@ void setup()
     }
     display.clearDisplay();
     display_message(boot);
+    CircuitPlayground.speaker.enable(false);
 
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
@@ -183,6 +184,7 @@ void eeprom_write(uint16_t address, uint8_t value)
 void loop()
 {
     char tmp[16];
+    uint16_t cap;
 
     // Wait for RTC to advance
     DateTime now = rtc.now();
@@ -197,17 +199,23 @@ void loop()
     } while (save == now.second());
 
     {
+        const int CAP_SAMPLES = 20;   // Number of samples to take for a capacitive touch read.
         uint8_t i, j, red, green, blue;
         j = now.second() % 10;
         CircuitPlayground.strip.setBrightness(255);
-        red = CircuitPlayground.slideSwitch() ? 40 : 255;
-        green = CircuitPlayground.leftButton() ? 40 : 255;
-        blue = CircuitPlayground.rightButton() ? 40 : 255;
+        red = CircuitPlayground.slideSwitch() ? 40 : 20;
+        green = CircuitPlayground.leftButton() ? 40 : 20;
+        blue = CircuitPlayground.rightButton() ? 40 : 20;
         for (i = 0; i <= j; i++) {
             CircuitPlayground.setPixelColor(i, red, green, blue);
         }
+        cap = 0;
+        if (CircuitPlayground.slideSwitch()) {
+            cap = CircuitPlayground.readCap(A3);
+        }
+        red = green = blue = ((cap >> 4) >= 0xff) ? 0xff : (cap >> 4);
         for (; i <= 9; i++) {
-            CircuitPlayground.setPixelColor(i, 0, 0, 0);
+            CircuitPlayground.setPixelColor(i, red, green, blue);
         }
         CircuitPlayground.strip.show();
     }
@@ -217,7 +225,7 @@ void loop()
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setFont(&FreeSans12pt7b);
-    snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+    snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d %04x", now.hour(), now.minute(), now.second(), cap);
     display.setCursor(0, LINE_1_Y);
     display.println(tmp);
     display.display();

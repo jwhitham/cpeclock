@@ -51,18 +51,8 @@ void setup()
     digitalWrite(LED_BUILTIN, HIGH);
     digitalWrite(INT_PIN, LOW);
 
-    uint32_t start = micros();
-    bool no_serial = false;
-    while (!Serial) {
-        uint32_t waited = micros() - start;
-        if (waited > 500000) {
-            no_serial = true;
-            break;
-        }
-        delay(10);
-    }
+    const char* boot = "Boot";
     Serial.begin(9600);
-    const char* boot = no_serial ? "Boot" : "Build date " __DATE__;
     Serial.println(boot);
     Serial.flush();
 
@@ -91,20 +81,23 @@ void setup()
     }
     if (!ncrs_init()) {
         Serial.println("ncrs_init() failed");
-        Serial.flush();
+        display_message("NCRS ERROR");
         for(;;);
     }
 
     if (!mail_init()) {
         Serial.println("mail_init() failed");
-        Serial.flush();
+        display_message("MAIL ERROR");
         for(;;);
     }
 
     attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
     digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("Booted");
+    CircuitPlayground.strip.setBrightness(255);
+    boot = "Booted";
+    display_message(boot);
+    Serial.println(boot);
     Serial.flush();
 }
 
@@ -203,7 +196,21 @@ void loop()
         mail_receive_messages();
     } while (save == now.second());
 
-    digitalWrite(LED_BUILTIN, HIGH);
+    {
+        uint8_t i, j, red, green, blue;
+        j = now.second() % 10;
+        CircuitPlayground.strip.setBrightness(255);
+        red = CircuitPlayground.slideSwitch() ? 40 : 255;
+        green = CircuitPlayground.leftButton() ? 40 : 255;
+        blue = CircuitPlayground.rightButton() ? 40 : 255;
+        for (i = 0; i <= j; i++) {
+            CircuitPlayground.setPixelColor(i, red, green, blue);
+        }
+        for (; i <= 9; i++) {
+            CircuitPlayground.setPixelColor(i, 0, 0, 0);
+        }
+        CircuitPlayground.strip.show();
+    }
 
     // Redraw display
     display.fillRect(0, BLUE_AREA_Y, SCREEN_WIDTH, SCREEN_HEIGHT - BLUE_AREA_Y, 0);
@@ -214,8 +221,5 @@ void loop()
     display.setCursor(0, LINE_1_Y);
     display.println(tmp);
     display.display();
-
-    // Flash the light
-    digitalWrite(LED_BUILTIN, LOW);
 
 }

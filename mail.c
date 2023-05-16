@@ -19,7 +19,9 @@
 #define NVRAM_CHECK_BYTE_1_ADDR 0x10
 #define NVRAM_STATE_ADDR        0x11
 #define NVRAM_CHECK_BYTE_2_ADDR 0x12
-#define NVRAM_SIZE              0x13
+#define NVRAM_ALARM_HOUR        0x13
+#define NVRAM_ALARM_MINUTE      0x14
+#define NVRAM_SIZE              0x15
 
 static uint64_t hmac_message_counter = 0;
 static hmac433_packet_t previous_packet;
@@ -35,6 +37,23 @@ static void save_counter(void)
     }
     // The newly-written counter is now the valid one
     nvram_write(NVRAM_STATE_ADDR, new_state);
+}
+
+static void save_alarm_time(uint8_t alarm_hour, uint8_t alarm_minute)
+{
+    nvram_write(NVRAM_ALARM_HOUR, alarm_hour);
+    nvram_write(NVRAM_ALARM_MINUTE, alarm_minute);
+}
+
+static void clear_alarm_time(void)
+{
+    nvram_write(NVRAM_ALARM_HOUR, 0xff);
+    nvram_write(NVRAM_ALARM_MINUTE, 0xff);
+}
+
+void mail_notify_alarm_sounds(void)
+{
+    clear_alarm_time();
 }
 
 int mail_init(void)
@@ -60,6 +79,7 @@ int mail_init(void)
         && (nvram_read(NVRAM_CHECK_BYTE_2_ADDR) == CHECK_BYTE_2_VALUE)) {
             hmac_message_counter = 1;
             save_counter();
+            clear_alarm_time();
             display_message("NVRAM INIT");
             return 1;
         } else {
@@ -72,6 +92,16 @@ int mail_init(void)
         size_t i;
         for (i = 0; i < 8; i++) {
             ((uint8_t*) &hmac_message_counter)[i] = nvram_read(i + counter_addr);
+        }
+        // load alarm
+        {
+            uint8_t alarm_hour = nvram_read(NVRAM_ALARM_HOUR);
+            uint8_t alarm_minute = nvram_read(NVRAM_ALARM_MINUTE);
+            if ((alarm_hour < 24) && (alarm_minute < 60)) {
+                set_alarm(alarm_hour, alarm_minute);
+            } else {
+                unset_alarm();
+            }
         }
         return 1;
     }
@@ -105,7 +135,16 @@ static void new_packet(const uint8_t* payload, int rs_rc)
         case 'T':
             // set time
             set_clock(payload[1], payload[2], payload[3]);
-            display_message("SET TIME");
+            break;
+        case 'A':
+            // set alarm
+            save_alarm_time(payload[1], payload[2]);
+            set_alarm(payload[1], payload[2]);
+            break;
+        case 'a':
+            // unset alarm
+            clear_alarm_time();
+            unset_alarm();
             break;
         default:
             display_message("ACTION ERROR");

@@ -16,6 +16,9 @@ extern void display_message(const char* msg);
 extern void set_clock(uint8_t hour, uint8_t minute, uint8_t second);
 extern void set_int_pin(char value);
 extern uint32_t micros();
+extern void set_alarm(uint8_t hour, uint8_t minute);
+extern void unset_alarm();
+extern void mail_notify_alarm_sounds(void);
 
 #ifdef __cplusplus
 }

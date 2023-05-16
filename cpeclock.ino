@@ -20,10 +20,12 @@
 #define LINE_1_Y ((SCREEN_HEIGHT / 2) + 2)
 #define LINE_2_Y (SCREEN_HEIGHT - 5)
 
+
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3c ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+#define NUM_LEDS 10
 
 #define NVRAM_SIZE 56
 #define KEY 0x98
@@ -31,8 +33,26 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define RX433_PIN   (PIN_A1)
 #define INT_PIN     (PIN_A2)
 
-RTC_DS1307 rtc;     // RTC address 0x68
+static RTC_DS1307 rtc;     // RTC address 0x68
 
+
+static const DateTime INVALID_TIME = DateTime(2000, 1, 1);
+static const TimeSpan SCREEN_ON_TIME = TimeSpan(20);
+static const TimeSpan MESSAGE_ON_TIME = TimeSpan(5);
+static const TimeSpan ALARM_ON_TIME = TimeSpan(600);
+static const TimeSpan ONE_DAY = TimeSpan(1, 0, 0, 0);
+
+static DateTime alarm_time = INVALID_TIME;
+static DateTime now_time = INVALID_TIME;
+static DateTime screen_off_time = INVALID_TIME;
+static DateTime alarm_screen_off_time = INVALID_TIME;
+static DateTime message_off_time = INVALID_TIME;
+
+static char message_buffer[32];
+static uint16_t clock_text_x;
+static bool allow_sound;
+
+static void display_message_now(const char* msg);
 
 void set_int_pin(char value)
 {
@@ -62,13 +82,13 @@ void setup()
         for(;;);
     }
     display.clearDisplay();
-    display_message(boot);
+    display_message_now(boot);
     CircuitPlayground.speaker.enable(false);
 
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
         Serial.flush();
-        display_message("RTC ERROR 1");
+        display_message_now("RTC ERROR 1");
         for(;;);
     }
     if (!rtc.isrunning()) {
@@ -76,28 +96,47 @@ void setup()
         rtc.adjust(DateTime(2012, 4, 14, 12, 0, 0));
         if (! rtc.isrunning()) {
             Serial.println("RTC is still NOT running despite an attempt to start it");
-            display_message("RTC ERROR 2");
+            display_message_now("RTC ERROR 2");
             for(;;);
         }
     }
+
+    now_time = rtc.now();
+    screen_off_time = now_time + SCREEN_ON_TIME;
+    message_off_time = INVALID_TIME;
+    alarm_screen_off_time = INVALID_TIME;
+    alarm_time = INVALID_TIME;
+    allow_sound = CircuitPlayground.slideSwitch();
+
+    // determine X location for clock
+    {
+        int16_t x1, y1;
+        uint16_t w, h;
+        display.setTextSize(1);
+        display.setFont(&FreeSans12pt7b);
+        display.getTextBounds("99:99:99", 0, LINE_1_Y, &x1, &y1, &w, &h);
+        clock_text_x = (SCREEN_WIDTH - w) / 2;
+    }
+
     if (!ncrs_init()) {
         Serial.println("ncrs_init() failed");
-        display_message("NCRS ERROR");
+        display_message_now("NCRS ERROR");
         for(;;);
     }
 
     if (!mail_init()) {
         Serial.println("mail_init() failed");
-        display_message("MAIL ERROR");
+        display_message_now("MAIL ERROR");
         for(;;);
     }
 
     attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
     digitalWrite(LED_BUILTIN, LOW);
-    CircuitPlayground.strip.setBrightness(255);
+    CircuitPlayground.strip.setBrightness(0);
+    CircuitPlayground.strip.show();
     boot = "Booted";
-    display_message(boot);
+    display_message_now(boot);
     Serial.println(boot);
     Serial.flush();
 }
@@ -112,11 +151,6 @@ void nvram_write(uint8_t addr, uint8_t data)
     rtc.writenvram(addr, data);
 }
 
-void set_clock(uint8_t hour, uint8_t minute, uint8_t second)
-{
-    rtc.adjust(DateTime(2012, 4, 14, hour, minute, second));
-}
-
 void disable_interrupts(void)
 {
     noInterrupts();
@@ -129,7 +163,15 @@ void enable_interrupts(void)
 
 void display_message(const char* msg)
 {
-    display.fillRect(0, 0, SCREEN_WIDTH, BLUE_AREA_Y, 0);
+    snprintf(message_buffer, sizeof(message_buffer), "%s", msg);
+    screen_off_time = now_time + SCREEN_ON_TIME;
+    message_off_time = now_time + MESSAGE_ON_TIME;
+}
+
+static void display_message_now(const char* msg)
+{
+    display_message(msg);
+    display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setFont(&FreeSans9pt7b);
@@ -180,54 +222,184 @@ void eeprom_write(uint16_t address, uint8_t value)
 	delay(10);
 }
 
+void set_clock(uint8_t hour, uint8_t minute, uint8_t second)
+{
+    DateTime new_time = DateTime(now_time.year(), now_time.month(), now_time.day(), hour, minute, second);
+
+    while (new_time <= now_time) {
+        new_time = new_time + ONE_DAY;
+    }
+    rtc.adjust(new_time);
+    display_message("SET CLOCK");
+}
+
+void set_alarm(uint8_t hour, uint8_t minute)
+{
+    alarm_time = DateTime(now_time.year(), now_time.month(), now_time.day(), hour, minute, 0);
+    while (alarm_time <= now_time) {
+        alarm_time = alarm_time + ONE_DAY;
+    }
+    alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
+    display_message("SET ALARM");
+}
+
+void unset_alarm()
+{
+    alarm_time = INVALID_TIME;
+    alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
+    display_message("UNSET ALARM");
+}
+
+static void spin_loop(uint32_t wait) {
+    uint32_t start = millis();
+    while ((millis() - start) <= wait) {
+        now_time = rtc.now();
+        mail_receive_messages();
+        if (CircuitPlayground.leftButton() != CircuitPlayground.rightButton()) {
+            // Button press
+            if ((alarm_time <= now_time)
+            && (now_time <= (alarm_time + ALARM_ON_TIME))) {
+                // alarm sounding - stop the alarm
+                alarm_time = INVALID_TIME;
+            }
+            alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
+            screen_off_time = now_time + SCREEN_ON_TIME;
+        }
+        if (allow_sound != CircuitPlayground.slideSwitch()) {
+            // Switch moved
+            allow_sound = CircuitPlayground.slideSwitch();
+            if (allow_sound) {
+                display_message("SOUND ON");
+            } else {
+                display_message("SOUND OFF");
+            }
+        }
+    }
+}
 
 void loop()
 {
     char tmp[16];
-    uint16_t cap;
+    int alarm_since = -1;
+    int i, j;
 
-    // Wait for RTC to advance
-    DateTime now = rtc.now();
-    uint8_t save = now.second();
-    do {
-        now = rtc.now();
-        uint8_t expect = (save + 1) % 60;
-        if ((now.second() != expect) && (now.second() != save)) {
-            break;
-        }
-        mail_receive_messages();
-    } while (save == now.second());
+    now_time = rtc.now();
+    
+    bool alternator = !(now_time.second() & 1);
 
-    {
-        const int CAP_SAMPLES = 20;   // Number of samples to take for a capacitive touch read.
-        uint8_t i, j, red, green, blue;
-        j = now.second() % 10;
-        CircuitPlayground.strip.setBrightness(255);
-        red = CircuitPlayground.slideSwitch() ? 40 : 20;
-        green = CircuitPlayground.leftButton() ? 40 : 20;
-        blue = CircuitPlayground.rightButton() ? 40 : 20;
-        for (i = 0; i <= j; i++) {
-            CircuitPlayground.setPixelColor(i, red, green, blue);
-        }
-        cap = 0;
-        if (CircuitPlayground.slideSwitch()) {
-            cap = CircuitPlayground.readCap(A3);
-        }
-        red = green = blue = ((cap >> 4) >= 0xff) ? 0xff : (cap >> 4);
-        for (; i <= 9; i++) {
-            CircuitPlayground.setPixelColor(i, red, green, blue);
-        }
-        CircuitPlayground.strip.show();
+    // Check for the alarm
+    if ((alarm_time != INVALID_TIME)
+    && (alarm_time <= now_time)
+    && (now_time <= (alarm_time + ALARM_ON_TIME))) {
+        // alarm should sound
+        alarm_since = (now_time - alarm_time).totalseconds();
+        mail_notify_alarm_sounds();
     }
 
-    // Redraw display
-    display.fillRect(0, BLUE_AREA_Y, SCREEN_WIDTH, SCREEN_HEIGHT - BLUE_AREA_Y, 0);
+    // Update the display
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(0, BLUE_AREA_Y - 1);
+    if ((now_time <= alarm_screen_off_time) && alternator && (alarm_time != INVALID_TIME)) {
+        // message about the alarm
+        snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", alarm_time.hour(), alarm_time.minute());
+        display.println(tmp);
+    } else if (now_time <= message_off_time) {
+        display.println(message_buffer);
+    }
+
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     display.setFont(&FreeSans12pt7b);
-    snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d %04x", now.hour(), now.minute(), now.second(), cap);
-    display.setCursor(0, LINE_1_Y);
-    display.println(tmp);
+    display.setCursor(clock_text_x, LINE_1_Y);
+    if ((alarm_since >= 0) && alternator) {
+        // alarm is sounding
+        snprintf(tmp, sizeof(tmp), "AL %02d:%02d", alarm_time.hour(), alarm_time.minute());
+        display.println(tmp);
+    } else if (now_time <= screen_off_time) {
+        snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now_time.hour(), now_time.minute(), now_time.second());
+        display.println(tmp);
+    }
     display.display();
 
+    // Do stuff in response to the alarm
+    if (alarm_since >= 0) {
+        int pattern = alarm_since / 30;
+
+        // Lighting effects
+        if (pattern == 0) {
+            // gradual brightness increase
+            CircuitPlayground.strip.setBrightness(((alarm_since + 1) * 255) / 30);
+            for (i = 0; i < NUM_LEDS; i++) {
+                CircuitPlayground.setPixelColor(i, 255, 255, 200);
+            }
+            CircuitPlayground.strip.show();
+        } else {
+            // 1,2,3... Flashing 
+            CircuitPlayground.strip.setBrightness(255);
+            for (i = 0; i < NUM_LEDS; i++) {
+                CircuitPlayground.setPixelColor(i, 255, 255, 200);
+            }
+            CircuitPlayground.strip.show();
+        }
+
+        // Sound effects
+        if (pattern == 2) {
+            CircuitPlayground.speaker.enable(allow_sound);
+            CircuitPlayground.playTone(440, (alarm_since % 30) + 10);
+        } else if (pattern >= 2) {
+            CircuitPlayground.speaker.enable(allow_sound);
+            CircuitPlayground.playTone(440, 40);
+        }
+
+        // Further lighting effects
+        if (pattern > 0) {
+            spin_loop(50);
+            CircuitPlayground.strip.setBrightness(0);
+            CircuitPlayground.strip.show();
+        }
+
+        if ((pattern >= 3) && (pattern <= 4)) {
+            // 3,4... Flash red
+            spin_loop(450);
+            CircuitPlayground.strip.setBrightness(255);
+            for (i = 0; i < NUM_LEDS; i++) {
+                CircuitPlayground.setPixelColor(i, 255, 0, 0);
+            }
+            CircuitPlayground.strip.show();
+            CircuitPlayground.playTone(440, 40);
+            spin_loop(50);
+            CircuitPlayground.strip.setBrightness(0);
+            CircuitPlayground.strip.show();
+        } else if (pattern >= 5) {
+            // Flashing red more
+            for (j = 0; j < 3; j++) {
+                spin_loop(200);
+                CircuitPlayground.strip.setBrightness(255);
+                for (i = 0; i < NUM_LEDS; i++) {
+                    CircuitPlayground.setPixelColor(i, 255, 0, 0);
+                }
+                CircuitPlayground.strip.show();
+                CircuitPlayground.playTone(440, 40);
+                spin_loop(50);
+                CircuitPlayground.strip.setBrightness(0);
+                CircuitPlayground.strip.show();
+            }
+        }
+    } else {
+        CircuitPlayground.strip.setBrightness(0);
+        CircuitPlayground.strip.show();
+    }
+
+    CircuitPlayground.speaker.enable(false);
+
+    // Wait for RTC to advance
+    uint8_t save = now_time.second();
+    do {
+        spin_loop(1);
+        now_time = rtc.now();
+    } while (save == now_time.second());
 }
+

@@ -51,9 +51,10 @@ static void clear_alarm_time(void)
     nvram_write(NVRAM_ALARM_MINUTE, 0xff);
 }
 
-void mail_notify_alarm_sounds(void)
+void mail_cancel_alarm(void)
 {
     clear_alarm_time();
+    unset_alarm();
 }
 
 int mail_init(void)
@@ -143,8 +144,7 @@ static void new_packet(const uint8_t* payload, int rs_rc)
             break;
         case 'a':
             // unset alarm
-            clear_alarm_time();
-            unset_alarm();
+            mail_cancel_alarm();
             break;
         default:
             display_message("ACTION ERROR");

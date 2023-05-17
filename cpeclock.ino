@@ -49,10 +49,13 @@ static DateTime alarm_screen_off_time = INVALID_TIME;
 static DateTime message_off_time = INVALID_TIME;
 
 static char message_buffer[32];
-static uint16_t clock_text_x;
-static bool allow_sound;
-
-static void display_message_now(const char* msg);
+static uint16_t clock_text_x = 0;
+static bool allow_sound = false;
+static bool alarm_active = false;
+static uint32_t millisecond_offset = 0;
+static uint32_t last_running_time = 0;
+static uint32_t sound_trigger = 0;
+static uint32_t strobe_trigger = 0;
 
 void set_int_pin(char value)
 {
@@ -82,13 +85,14 @@ void setup()
         for(;;);
     }
     display.clearDisplay();
-    display_message_now(boot);
+    display.setTextWrap(false);
+    display_message(boot);
     CircuitPlayground.speaker.enable(false);
 
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
         Serial.flush();
-        display_message_now("RTC ERROR 1");
+        display_message("RTC ERROR 1");
         for(;;);
     }
     if (!rtc.isrunning()) {
@@ -96,12 +100,13 @@ void setup()
         rtc.adjust(DateTime(2012, 4, 14, 12, 0, 0));
         if (! rtc.isrunning()) {
             Serial.println("RTC is still NOT running despite an attempt to start it");
-            display_message_now("RTC ERROR 2");
+            display_message("RTC ERROR 2");
             for(;;);
         }
     }
 
     now_time = rtc.now();
+    millisecond_offset = millis();
     screen_off_time = now_time + SCREEN_ON_TIME;
     message_off_time = INVALID_TIME;
     alarm_screen_off_time = INVALID_TIME;
@@ -120,13 +125,13 @@ void setup()
 
     if (!ncrs_init()) {
         Serial.println("ncrs_init() failed");
-        display_message_now("NCRS ERROR");
+        display_message("NCRS ERROR");
         for(;;);
     }
 
     if (!mail_init()) {
         Serial.println("mail_init() failed");
-        display_message_now("MAIL ERROR");
+        display_message("MAIL ERROR");
         for(;;);
     }
 
@@ -136,7 +141,7 @@ void setup()
     CircuitPlayground.strip.setBrightness(0);
     CircuitPlayground.strip.show();
     boot = "Booted";
-    display_message_now(boot);
+    display_message(boot);
     Serial.println(boot);
     Serial.flush();
 }
@@ -161,65 +166,47 @@ void enable_interrupts(void)
     interrupts();
 }
 
+static void update_display(void)
+{
+    bool alternator = !(now_time.second() & 1);
+    char tmp[16];
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+
+    // Update the upper line on the display
+    display.setFont(&FreeSans9pt7b);
+    display.setCursor(0, BLUE_AREA_Y - 1);
+    if ((now_time <= alarm_screen_off_time) && alternator && (alarm_time != INVALID_TIME)) {
+        // message about the alarm (e.g. button pressed)
+        snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", alarm_time.hour(), alarm_time.minute());
+        display.println(tmp);
+    } else if (now_time <= message_off_time) {
+        display.println(message_buffer);
+    }
+
+    // Update the lower line on the display
+    display.setFont(&FreeSans12pt7b);
+    display.setCursor(clock_text_x, LINE_1_Y);
+    if (alarm_active && alternator) {
+        // alarm is sounding
+        snprintf(tmp, sizeof(tmp), "AL %02d:%02d", alarm_time.hour(), alarm_time.minute());
+        display.println(tmp);
+    } else if ((now_time <= screen_off_time) || alarm_active) {
+        // show the time
+        snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now_time.hour(), now_time.minute(), now_time.second());
+        display.println(tmp);
+    }
+    display.display();
+}
+
 void display_message(const char* msg)
 {
     snprintf(message_buffer, sizeof(message_buffer), "%s", msg);
     screen_off_time = now_time + SCREEN_ON_TIME;
     message_off_time = now_time + MESSAGE_ON_TIME;
-}
-
-static void display_message_now(const char* msg)
-{
-    display_message(msg);
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setFont(&FreeSans9pt7b);
-    display.setCursor(0, BLUE_AREA_Y - 1);
-    display.println(msg);
-    display.display();
-}
-
-uint8_t eeprom_read(uint16_t address)
-{
-	uint8_t first,second,data;
-	Wire.beginTransmission(EEPROM_ADDRESS);
-	
-	first = highByte(address);
-	second = lowByte(address);
-	
-	Wire.write(first);      //First Word Address
-	Wire.write(second);      //Second Word Address
-	
-	Wire.endTransmission();
-	delay(10);
-
-	Wire.requestFrom(EEPROM_ADDRESS, 1);
-	delay(10);
-	
-	data = Wire.read();
-	delay(10);
-	
-	return data;
-}
-
-void eeprom_write(uint16_t address, uint8_t value)
-{
-	uint8_t first,second;
-	Wire.beginTransmission(EEPROM_ADDRESS);
-
-	first = highByte(address);
-	second = lowByte(address);
-
-	Wire.write(first);      //First Word Address
-	Wire.write(second);      //Second Word Address
-
-	Wire.write(value);     
-
-	delay(10);
-
-	Wire.endTransmission();
-	delay(10);
+    update_display();
 }
 
 void set_clock(uint8_t hour, uint8_t minute, uint8_t second)
@@ -247,159 +234,202 @@ void unset_alarm()
 {
     alarm_time = INVALID_TIME;
     alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
+    alarm_active = false;
     display_message("UNSET ALARM");
 }
 
-static void spin_loop(uint32_t wait) {
-    uint32_t start = millis();
-    while ((millis() - start) <= wait) {
-        now_time = rtc.now();
-        mail_receive_messages();
-        if (CircuitPlayground.leftButton() != CircuitPlayground.rightButton()) {
-            // Button press
-            if ((alarm_time <= now_time)
-            && (now_time <= (alarm_time + ALARM_ON_TIME))) {
-                // alarm sounding - stop the alarm
-                alarm_time = INVALID_TIME;
-            }
-            alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
-            screen_off_time = now_time + SCREEN_ON_TIME;
-        }
-        if (allow_sound != CircuitPlayground.slideSwitch()) {
-            // Switch moved
-            allow_sound = CircuitPlayground.slideSwitch();
-            if (allow_sound) {
-                display_message("SOUND ON");
+static void update_alarm(void)
+{
+    uint32_t i;
+
+    // How many milliseconds has the alarm been running for?
+    uint32_t running_time = (now_time - alarm_time).totalseconds() * 1000;
+    running_time += millis() - millisecond_offset;
+
+    // How many milliseconds since the last time update_alarm ran?
+    uint32_t millisecond_delta = running_time - last_running_time;
+    last_running_time = running_time;
+
+    const uint32_t TOTAL_PHASE_TIME = 30000;
+    const uint32_t TOTAL_PULSE_TIME = 2000;
+    uint32_t phase = running_time / TOTAL_PHASE_TIME;
+    uint32_t phase_time = running_time % TOTAL_PHASE_TIME;
+    uint32_t pulse_time = phase_time % TOTAL_PULSE_TIME;
+
+    strobe_trigger += millisecond_delta;
+    sound_trigger += millisecond_delta;
+
+    // Brightness effects
+    switch ((phase <= 4) ? phase : (((phase - 1) % 4) + 1)) {
+        case 0:
+            // gradual fade in
+            CircuitPlayground.strip.setBrightness((phase_time * 255) / TOTAL_PHASE_TIME);
+            break;
+        case 1:
+            // pulsing
+            if (pulse_time < (TOTAL_PULSE_TIME / 2)) {
+                CircuitPlayground.strip.setBrightness(255 - ((pulse_time * 255) / (TOTAL_PULSE_TIME / 2)));
             } else {
-                display_message("SOUND OFF");
+                CircuitPlayground.strip.setBrightness(((pulse_time - (TOTAL_PULSE_TIME / 2)) * 255) / (TOTAL_PULSE_TIME / 2));
+            }
+            strobe_trigger = 0;
+            break;
+        case 2:
+            // strobing, once a second
+            if (strobe_trigger >= 1000) {
+                CircuitPlayground.strip.setBrightness(255);
+                strobe_trigger = 0;
+            } else {
+                CircuitPlayground.strip.setBrightness(0);
+            }
+            break;
+        case 3:
+            // strobing, twice a second
+            if (strobe_trigger >= 500) {
+                CircuitPlayground.strip.setBrightness(255);
+                strobe_trigger = 0;
+            } else {
+                CircuitPlayground.strip.setBrightness(0);
+            }
+            break;
+        default:
+            // strobing, four times a second
+            if (strobe_trigger >= 250) {
+                CircuitPlayground.strip.setBrightness(255);
+                strobe_trigger = 0;
+            } else {
+                CircuitPlayground.strip.setBrightness(0);
+            }
+            break;
+    }
+
+    // Lighting colour effects
+    if (phase <= 4) {
+        // yellow
+        for (i = 0; i < NUM_LEDS; i++) {
+            CircuitPlayground.strip.setPixelColor(i, 255, 255, 50);
+        }
+    } else if (phase <= 8) {
+        // white
+        for (i = 0; i < NUM_LEDS; i++) {
+            CircuitPlayground.strip.setPixelColor(i, 255, 255, 255);
+        }
+    } else {
+        if (pulse_time < (TOTAL_PULSE_TIME / 2)) {
+            // white
+            for (i = 0; i < NUM_LEDS; i++) {
+                CircuitPlayground.strip.setPixelColor(i, 255, 255, 255);
+            }
+        } else {
+            // red
+            for (i = 0; i < NUM_LEDS; i++) {
+                CircuitPlayground.strip.setPixelColor(i, 255, 0, 0);
             }
         }
+    }
+    CircuitPlayground.strip.show();
+
+    // Sound effects
+    uint32_t how_often = 0;
+    switch (phase) {
+        case 0:
+        case 1:
+        case 2:
+            // no sound
+            how_often = 0;
+            sound_trigger = 0;
+            break;
+        case 3:
+            how_often = 10000;
+            CircuitPlayground.speaker.enable(allow_sound);
+            break;
+        case 4:
+            how_often = 5000;
+            break;
+        case 5:
+            how_often = 3000;
+            break;
+        case 6:
+            how_often = 2000;
+            break;
+        case 7:
+            how_often = 1000;
+            break;
+        case 8:
+            how_often = 500;
+            break;
+        case 9:
+            how_often = 200;
+            break;
+        default:
+            how_often = 100;
+            break;
+    }
+    if ((sound_trigger >= how_often) && (how_often > 0)) {
+        CircuitPlayground.playTone(440, 20);
+        sound_trigger = 0;
     }
 }
 
 void loop()
 {
-    char tmp[16];
-    int alarm_since = -1;
-    int i, j;
-
+    uint8_t previous_second = now_time.second();
     now_time = rtc.now();
-    
-    bool alternator = !(now_time.second() & 1);
 
-    // Check for the alarm
-    if ((alarm_time != INVALID_TIME)
-    && (alarm_time <= now_time)
-    && (now_time <= (alarm_time + ALARM_ON_TIME))) {
-        // alarm should sound
-        alarm_since = (now_time - alarm_time).totalseconds();
-        mail_notify_alarm_sounds();
-    }
-
-    // Update the display
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setFont(&FreeSans9pt7b);
-    display.setCursor(0, BLUE_AREA_Y - 1);
-    if ((now_time <= alarm_screen_off_time) && alternator && (alarm_time != INVALID_TIME)) {
-        // message about the alarm
-        snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", alarm_time.hour(), alarm_time.minute());
-        display.println(tmp);
-    } else if (now_time <= message_off_time) {
-        display.println(message_buffer);
-    }
-
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setFont(&FreeSans12pt7b);
-    display.setCursor(clock_text_x, LINE_1_Y);
-    if ((alarm_since >= 0) && alternator) {
-        // alarm is sounding
-        snprintf(tmp, sizeof(tmp), "AL %02d:%02d", alarm_time.hour(), alarm_time.minute());
-        display.println(tmp);
-    } else if (now_time <= screen_off_time) {
-        snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now_time.hour(), now_time.minute(), now_time.second());
-        display.println(tmp);
-    }
-    display.display();
-
-    // Do stuff in response to the alarm
-    if (alarm_since >= 0) {
-        int pattern = alarm_since / 30;
-
-        // Lighting effects
-        if (pattern == 0) {
-            // gradual brightness increase
-            CircuitPlayground.strip.setBrightness(((alarm_since + 1) * 255) / 30);
-            for (i = 0; i < NUM_LEDS; i++) {
-                CircuitPlayground.setPixelColor(i, 255, 255, 200);
+    // These tasks run every second
+    if (now_time.second() != previous_second) {
+        // Check for the alarm
+        if (!alarm_active) {
+            if ((alarm_time != INVALID_TIME)
+            && (alarm_time <= now_time)
+            && (now_time <= (alarm_time + ALARM_ON_TIME))) {
+                // alarm should sound
+                alarm_active = true;
             }
-            CircuitPlayground.strip.show();
         } else {
-            // 1,2,3... Flashing 
-            CircuitPlayground.strip.setBrightness(255);
-            for (i = 0; i < NUM_LEDS; i++) {
-                CircuitPlayground.setPixelColor(i, 255, 255, 200);
+            if ((alarm_time == INVALID_TIME)
+            || (now_time > (alarm_time + ALARM_ON_TIME))) {
+                // alarm should not sound
+                unset_alarm();
             }
-            CircuitPlayground.strip.show();
         }
+        millisecond_offset = millis();
 
-        // Sound effects
-        if (pattern == 2) {
-            CircuitPlayground.speaker.enable(allow_sound);
-            CircuitPlayground.playTone(440, (alarm_since % 30) + 10);
-        } else if (pattern >= 2) {
-            CircuitPlayground.speaker.enable(allow_sound);
-            CircuitPlayground.playTone(440, 40);
-        }
-
-        // Further lighting effects
-        if (pattern > 0) {
-            spin_loop(50);
+        if (!alarm_active) {
             CircuitPlayground.strip.setBrightness(0);
             CircuitPlayground.strip.show();
+            CircuitPlayground.speaker.enable(false);
         }
-
-        if ((pattern >= 3) && (pattern <= 4)) {
-            // 3,4... Flash red
-            spin_loop(450);
-            CircuitPlayground.strip.setBrightness(255);
-            for (i = 0; i < NUM_LEDS; i++) {
-                CircuitPlayground.setPixelColor(i, 255, 0, 0);
-            }
-            CircuitPlayground.strip.show();
-            CircuitPlayground.playTone(440, 40);
-            spin_loop(50);
-            CircuitPlayground.strip.setBrightness(0);
-            CircuitPlayground.strip.show();
-        } else if (pattern >= 5) {
-            // Flashing red more
-            for (j = 0; j < 3; j++) {
-                spin_loop(200);
-                CircuitPlayground.strip.setBrightness(255);
-                for (i = 0; i < NUM_LEDS; i++) {
-                    CircuitPlayground.setPixelColor(i, 255, 0, 0);
-                }
-                CircuitPlayground.strip.show();
-                CircuitPlayground.playTone(440, 40);
-                spin_loop(50);
-                CircuitPlayground.strip.setBrightness(0);
-                CircuitPlayground.strip.show();
-            }
-        }
-    } else {
-        CircuitPlayground.strip.setBrightness(0);
-        CircuitPlayground.strip.show();
+        update_display();
     }
 
-    CircuitPlayground.speaker.enable(false);
+    // These tasks run slightly less often than every millisecond
+    if (alarm_active) {
+        update_alarm();
+    }
 
-    // Wait for RTC to advance
-    uint8_t save = now_time.second();
-    do {
-        spin_loop(1);
-        now_time = rtc.now();
-    } while (save == now_time.second());
+    // These tasks run every time loop() is called
+    mail_receive_messages();
+
+    if (CircuitPlayground.leftButton() != CircuitPlayground.rightButton()) {
+        // Button press
+        if (alarm_active) {
+            // alarm sounding - stop the alarm
+            mail_cancel_alarm(); // calls unset_alarm after writing to NVM
+        }
+        alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
+        screen_off_time = now_time + SCREEN_ON_TIME;
+    }
+    if (allow_sound != CircuitPlayground.slideSwitch()) {
+        // Switch moved
+        allow_sound = CircuitPlayground.slideSwitch();
+        if (allow_sound) {
+            display_message("SOUND ON");
+        } else {
+            display_message("SOUND OFF");
+        }
+    }
+
+    delay(1);
 }
 

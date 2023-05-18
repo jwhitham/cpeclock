@@ -21,7 +21,7 @@
 #define NVRAM_CHECK_BYTE_2_ADDR 0x12
 #define NVRAM_ALARM_HOUR        0x13
 #define NVRAM_ALARM_MINUTE      0x14
-#define NVRAM_SIZE              0x15
+#define NVRAM_ALARM_ENABLE      0x15
 
 static uint64_t hmac_message_counter = 0;
 static hmac433_packet_t previous_packet;
@@ -45,16 +45,33 @@ static void save_alarm_time(uint8_t alarm_hour, uint8_t alarm_minute)
     nvram_write(NVRAM_ALARM_MINUTE, alarm_minute);
 }
 
-static void clear_alarm_time(void)
+static void set_alarm_enable(void)
 {
-    nvram_write(NVRAM_ALARM_HOUR, 0xff);
-    nvram_write(NVRAM_ALARM_MINUTE, 0xff);
+    nvram_write(NVRAM_ALARM_ENABLE, 1);
+}
+
+static void clear_alarm_enable(void)
+{
+    nvram_write(NVRAM_ALARM_ENABLE, 0);
 }
 
 void mail_cancel_alarm(void)
 {
-    clear_alarm_time();
+    clear_alarm_enable();
     unset_alarm();
+}
+
+void mail_reload_alarm(uint8_t always_enable)
+{
+    uint8_t alarm_hour = nvram_read(NVRAM_ALARM_HOUR);
+    uint8_t alarm_minute = nvram_read(NVRAM_ALARM_MINUTE);
+    uint8_t alarm_enable = always_enable || nvram_read(NVRAM_ALARM_ENABLE);
+    if ((alarm_hour < 24) && (alarm_minute < 60) && alarm_enable) {
+        set_alarm_enable();
+        set_alarm(alarm_hour, alarm_minute);
+    } else {
+        unset_alarm();
+    }
 }
 
 int mail_init(void)
@@ -80,7 +97,8 @@ int mail_init(void)
         && (nvram_read(NVRAM_CHECK_BYTE_2_ADDR) == CHECK_BYTE_2_VALUE)) {
             hmac_message_counter = 1;
             save_counter();
-            clear_alarm_time();
+            save_alarm_time(0, 0);
+            clear_alarm_enable();
             display_message("NVRAM INIT");
             return 1;
         } else {
@@ -95,15 +113,7 @@ int mail_init(void)
             ((uint8_t*) &hmac_message_counter)[i] = nvram_read(i + counter_addr);
         }
         // load alarm
-        {
-            uint8_t alarm_hour = nvram_read(NVRAM_ALARM_HOUR);
-            uint8_t alarm_minute = nvram_read(NVRAM_ALARM_MINUTE);
-            if ((alarm_hour < 24) && (alarm_minute < 60)) {
-                set_alarm(alarm_hour, alarm_minute);
-            } else {
-                unset_alarm();
-            }
-        }
+        mail_reload_alarm(0);
         return 1;
     }
 }
@@ -140,6 +150,7 @@ static void new_packet(const uint8_t* payload, int rs_rc)
         case 'A':
             // set alarm
             save_alarm_time(payload[1], payload[2]);
+            set_alarm_enable();
             set_alarm(payload[1], payload[2]);
             break;
         case 'a':

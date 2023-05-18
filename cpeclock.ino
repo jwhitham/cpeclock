@@ -411,8 +411,14 @@ void loop()
     // These tasks run every time loop() is called
     mail_receive_messages();
 
-    if (CircuitPlayground.leftButton() != CircuitPlayground.rightButton()) {
-        // Button press
+    if (CircuitPlayground.leftButton() && CircuitPlayground.rightButton()) {
+        // both buttons pressed
+        if (alarm_time == INVALID_TIME) {
+            mail_reload_alarm(1);
+        }
+    }
+    if (CircuitPlayground.leftButton() || CircuitPlayground.rightButton()) {
+        // Either button pressed
         if (alarm_active) {
             // alarm sounding - stop the alarm
             mail_cancel_alarm(); // calls unset_alarm after writing to NVM

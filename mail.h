@@ -14,6 +14,7 @@ extern void unset_alarm();
 void mail_receive_messages(void);
 int mail_init(void);
 void mail_cancel_alarm(void);
+void mail_reload_alarm(uint8_t always_enable);
 
 #ifdef __cplusplus
 }

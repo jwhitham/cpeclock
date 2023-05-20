@@ -6,7 +6,7 @@
 
 // constants for new codes
 #define NC_PULSE 0x100
-#define EPSILON  0x10
+#define EPSILON  ((NC_PULSE * 3) / 8)
 
 #define NC_SYMBOL_TIME      ((NC_PULSE * 5) + (NC_PULSE * 2 * SYMBOL_SIZE))
 #define MAX_INCOMPLETE_SKIP (5) // maximum symbols that can be skipped at the end of a message

@@ -76,6 +76,7 @@ int mail_init(void)
         return 0;
     }
 
+    state = nvram_read(NVRAM_STATE_ADDR);
     if ((nvram_read(NVRAM_CHECK_BYTE_1_ADDR) != CHECK_BYTE_1_VALUE)
     || (nvram_read(NVRAM_CHECK_BYTE_2_ADDR) != CHECK_BYTE_2_VALUE)
     || (state > 1)) {
@@ -131,8 +132,8 @@ static void new_packet(const uint8_t* payload, int rs_rc)
             break;
         case 'C':
             // show counter
-            snprintf(tmp, sizeof(tmp), "C %04x E %d",
-                    (unsigned) (hmac_message_counter & 0xffff),
+            snprintf(tmp, sizeof(tmp), "C %06x E %d",
+                    (unsigned) (hmac_message_counter & 0xffffff),
                     rs_rc);
             display_message(tmp);
             break;
@@ -147,6 +148,7 @@ static void new_packet(const uint8_t* payload, int rs_rc)
             break;
         case 'a':
             // unset alarm, and cancel if it's active
+            // same as pressing the left button
             alarm_set(0, 0, ALARM_DISABLED);
             break;
         default:

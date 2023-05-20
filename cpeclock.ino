@@ -33,6 +33,8 @@ static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define RX433_PIN   (PIN_A1)
 #define INT_PIN     (PIN_A2)
 
+#define PERIOD 10 // milliseconds
+
 static RTC_DS1307 rtc;     // RTC address 0x68
 
 
@@ -45,7 +47,6 @@ static const TimeSpan ONE_DAY = TimeSpan(1, 0, 0, 0);
 static DateTime alarm_time = INVALID_TIME;
 static DateTime now_time = INVALID_TIME;
 static DateTime screen_off_time = INVALID_TIME;
-static DateTime alarm_screen_off_time = INVALID_TIME;
 static DateTime message_off_time = INVALID_TIME;
 
 static char message_buffer[32];
@@ -109,7 +110,6 @@ void setup()
     millisecond_offset = millis();
     screen_off_time = now_time + SCREEN_ON_TIME;
     message_off_time = INVALID_TIME;
-    alarm_screen_off_time = INVALID_TIME;
     alarm_time = INVALID_TIME;
     allow_sound = CircuitPlayground.slideSwitch();
 
@@ -176,11 +176,7 @@ static void update_display(void)
     // Update the upper line on the display
     display.setFont(&FreeSans9pt7b);
     display.setCursor(0, BLUE_AREA_Y - 1);
-    if ((now_time <= alarm_screen_off_time) && alternator && (alarm_time != INVALID_TIME)) {
-        // message about the alarm (e.g. button pressed)
-        snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", alarm_time.hour(), alarm_time.minute());
-        display.println(tmp);
-    } else if (now_time <= message_off_time) {
+    if (now_time <= message_off_time) {
         display.println(message_buffer);
     }
 
@@ -218,37 +214,16 @@ void set_clock(uint8_t hour, uint8_t minute, uint8_t second)
     display_message("SET CLOCK");
 }
 
-void alarm_set(uint8_t hour, uint8_t minute, alarm_state_t state)
-{
-    switch (state) {
-        case ALARM_ENABLED:
-            // Reached when the alarm should be enabled, as a result of a message received,
-            // or when booting up, or due to a button press. Adjust the time so that it's in the future.
-            alarm_time = DateTime(now_time.year(), now_time.month(), now_time.day(), hour, minute, 0);
-            while (alarm_time <= now_time) {
-                alarm_time = alarm_time + ONE_DAY;
-            }
-            display_message("ALARM SET");
-            break;
-        case ALARM_ACTIVE:
-            // Reached when the alarm should begin to sound, as a result of reaching the alarm time.
-            display_message("ALARM!");
-            break;
-        default:
-            // Reached when the alarm should be disabled, as a result of the user pressing a button
-            // while the alarm is sounding, or as a result of timing out, or due a message received.
-            display_message("ALARM OFF");
-            state = ALARM_DISABLED;
-            alarm_time = INVALID_TIME;
-            break;
-    }
-    alarm_state = state;
-    alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
-    mail_set_alarm_state(state);
-}
-
 static void update_alarm(void)
 {
+    // No action if the alarm is disabled 
+    if (alarm_state != ALARM_ACTIVE) {
+        CircuitPlayground.strip.setBrightness(0);
+        CircuitPlayground.strip.show();
+        CircuitPlayground.speaker.enable(false);
+        return;
+    }
+
     uint32_t i;
 
     // How many milliseconds has the alarm been running for?
@@ -382,6 +357,37 @@ static void update_alarm(void)
     }
 }
 
+void alarm_set(uint8_t hour, uint8_t minute, alarm_state_t state)
+{
+    char tmp[16];
+    switch (state) {
+        case ALARM_ENABLED:
+            // Reached when the alarm should be enabled, as a result of a message received,
+            // or when booting up, or due to a button press. Adjust the time so that it's in the future.
+            alarm_time = DateTime(now_time.year(), now_time.month(), now_time.day(), hour, minute, 0);
+            while (alarm_time <= now_time) {
+                alarm_time = alarm_time + ONE_DAY;
+            }
+            snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", alarm_time.hour(), alarm_time.minute());
+            display_message(tmp);
+            break;
+        case ALARM_ACTIVE:
+            // Reached when the alarm should begin to sound, as a result of reaching the alarm time.
+            display_message("ALARM!");
+            break;
+        default:
+            // Reached when the alarm should be disabled, as a result of the user pressing a button
+            // while the alarm is sounding, or as a result of timing out, or due a message received.
+            display_message("ALARM OFF");
+            state = ALARM_DISABLED;
+            alarm_time = INVALID_TIME;
+            break;
+    }
+    alarm_state = state;
+    mail_set_alarm_state(state);
+    update_alarm();
+}
+
 void loop()
 {
     uint8_t previous_second = now_time.second();
@@ -402,7 +408,8 @@ void loop()
             case ALARM_ACTIVE:
                 if ((alarm_time == INVALID_TIME)
                 || (now_time > (alarm_time + ALARM_ON_TIME))) {
-                    // alarm should not sound
+                    // timeout - alarm should stop
+                    // same as pressing the left button
                     alarm_set(0, 0, ALARM_DISABLED);
                 }
                 break;
@@ -411,15 +418,10 @@ void loop()
         }
         millisecond_offset = millis();
 
-        if (alarm_state != ALARM_ACTIVE) {
-            CircuitPlayground.strip.setBrightness(0);
-            CircuitPlayground.strip.show();
-            CircuitPlayground.speaker.enable(false);
-        }
         update_display();
     }
 
-    // These tasks run slightly less often than every millisecond
+    // These tasks run slightly less often than every PERIOD
     if (alarm_state == ALARM_ACTIVE) {
         update_alarm();
     }
@@ -427,21 +429,14 @@ void loop()
     // These tasks run every time loop() is called
     mail_receive_messages();
 
-    if (CircuitPlayground.leftButton() && CircuitPlayground.rightButton()) {
-        // both buttons pressed
-        if (alarm_time == INVALID_TIME) {
-            // reload the alarm for the next day, using the same time as before
-            mail_reload_alarm(1);
-        }
+    if (CircuitPlayground.rightButton()) {
+        // right button - reload alarm - mail_reload_alarm will call alarm_set
+        // also stops the current alarm
+        mail_reload_alarm(1);
     }
-    if (CircuitPlayground.leftButton() || CircuitPlayground.rightButton()) {
-        // Either button pressed
-        if (alarm_state == ALARM_ACTIVE) {
-            // alarm is sounding - stop the alarm
-            alarm_set(0, 0, ALARM_DISABLED);
-        }
-        alarm_screen_off_time = now_time + MESSAGE_ON_TIME;
-        screen_off_time = now_time + SCREEN_ON_TIME;
+    if (CircuitPlayground.leftButton()) {
+        // left button - cancel / disable alarm
+        alarm_set(0, 0, ALARM_DISABLED);
     }
     if (allow_sound != CircuitPlayground.slideSwitch()) {
         // Switch moved
@@ -453,6 +448,6 @@ void loop()
         }
     }
 
-    delay(1);
+    delay(PERIOD);
 }
 

@@ -45,33 +45,17 @@ static void save_alarm_time(uint8_t alarm_hour, uint8_t alarm_minute)
     nvram_write(NVRAM_ALARM_MINUTE, alarm_minute);
 }
 
-static void set_alarm_enable(void)
-{
-    nvram_write(NVRAM_ALARM_STATE, (uint8_t) ALARM_ENABLED);
-}
-
-static void clear_alarm_enable(void)
-{
-    nvram_write(NVRAM_ALARM_STATE, (uint8_t) ALARM_DISABLED);
-}
-
-void mail_start_alarm(void)
-{
-    nvram_write(NVRAM_ALARM_STATE, (uint8_t) ALARM_ACTIVE);
-    clear_alarm_enable();
-    unset_alarm();
-}
-
 void mail_set_alarm_state(alarm_state_t alarm_state)
 {
     nvram_write(NVRAM_ALARM_STATE, alarm_state);
 }
 
-void mail_set_alarm_state(alarm_state_t alarm_state)
+void mail_reload_alarm(int force_enable)
 {
+    // Reload the alarm from NVRAM
     uint8_t alarm_hour = nvram_read(NVRAM_ALARM_HOUR);
     uint8_t alarm_minute = nvram_read(NVRAM_ALARM_MINUTE);
-    alarm_state_t old_alarm_state = (alarm_state_t) nvram_read(NVRAM_ALARM_STATE);
+    alarm_state_t alarm_state = (alarm_state_t) nvram_read(NVRAM_ALARM_STATE);
 
     if (force_enable) {
         alarm_state = ALARM_ENABLED;
@@ -79,9 +63,7 @@ void mail_set_alarm_state(alarm_state_t alarm_state)
     if ((alarm_hour >= 24) || (alarm_minute >= 60)) {
         alarm_state = ALARM_DISABLED;
     }
-
-    set_alarm(alarm_hour, alarm_minute, alarm_state);
-    mail_set_alarm_state(alarm_state);
+    alarm_set(alarm_hour, alarm_minute, alarm_state);
 }
 
 int mail_init(void)
@@ -94,7 +76,6 @@ int mail_init(void)
         return 0;
     }
 
-    state = nvram_read(NVRAM_STATE_ADDR);
     if ((nvram_read(NVRAM_CHECK_BYTE_1_ADDR) != CHECK_BYTE_1_VALUE)
     || (nvram_read(NVRAM_CHECK_BYTE_2_ADDR) != CHECK_BYTE_2_VALUE)
     || (state > 1)) {
@@ -108,7 +89,8 @@ int mail_init(void)
             hmac_message_counter = 1;
             save_counter();
             save_alarm_time(0, 0);
-            clear_alarm_enable();
+            mail_set_alarm_state(ALARM_DISABLED);
+            mail_reload_alarm(0);
             display_message("NVRAM INIT");
             return 1;
         } else {
@@ -122,7 +104,8 @@ int mail_init(void)
         for (i = 0; i < 8; i++) {
             ((uint8_t*) &hmac_message_counter)[i] = nvram_read(i + counter_addr);
         }
-        // load alarm
+
+        // load alarm state from NVRAM
         mail_reload_alarm(0);
         return 1;
     }
@@ -160,12 +143,11 @@ static void new_packet(const uint8_t* payload, int rs_rc)
         case 'A':
             // set alarm
             save_alarm_time(payload[1], payload[2]);
-            set_alarm_enable();
-            set_alarm(payload[1], payload[2]);
+            alarm_set(payload[1], payload[2], ALARM_ENABLED);
             break;
         case 'a':
-            // unset alarm
-            mail_cancel_alarm();
+            // unset alarm, and cancel if it's active
+            alarm_set(0, 0, ALARM_DISABLED);
             break;
         default:
             display_message("ACTION ERROR");

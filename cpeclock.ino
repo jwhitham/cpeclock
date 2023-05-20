@@ -307,7 +307,7 @@ static void update_alarm(void)
     if (phase <= 4) {
         // yellow
         for (i = 0; i < NUM_LEDS; i++) {
-            CircuitPlayground.strip.setPixelColor(i, 255, 255, 50);
+            CircuitPlayground.strip.setPixelColor(i, 255, 255, 0);
         }
     } else if (phase <= 8) {
         // white
@@ -341,7 +341,6 @@ static void update_alarm(void)
             break;
         case 3:
             how_often = 10000;
-            CircuitPlayground.speaker.enable(allow_sound);
             break;
         case 4:
             how_often = 5000;
@@ -364,6 +363,9 @@ static void update_alarm(void)
         default:
             how_often = 100;
             break;
+    }
+    if (phase >= 3) {
+        CircuitPlayground.speaker.enable(allow_sound);
     }
     if ((sound_trigger >= how_often) && (how_often > 0)) {
         CircuitPlayground.playTone(440, 20);

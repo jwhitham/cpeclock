@@ -21,7 +21,7 @@
 #define NVRAM_CHECK_BYTE_2_ADDR 0x12
 #define NVRAM_ALARM_HOUR        0x13
 #define NVRAM_ALARM_MINUTE      0x14
-#define NVRAM_ALARM_ENABLE      0x15
+#define NVRAM_ALARM_STATE       0x15
 
 static uint64_t hmac_message_counter = 0;
 static hmac433_packet_t previous_packet;
@@ -47,31 +47,41 @@ static void save_alarm_time(uint8_t alarm_hour, uint8_t alarm_minute)
 
 static void set_alarm_enable(void)
 {
-    nvram_write(NVRAM_ALARM_ENABLE, 1);
+    nvram_write(NVRAM_ALARM_STATE, (uint8_t) ALARM_ENABLED);
 }
 
 static void clear_alarm_enable(void)
 {
-    nvram_write(NVRAM_ALARM_ENABLE, 0);
+    nvram_write(NVRAM_ALARM_STATE, (uint8_t) ALARM_DISABLED);
 }
 
-void mail_cancel_alarm(void)
+void mail_start_alarm(void)
 {
+    nvram_write(NVRAM_ALARM_STATE, (uint8_t) ALARM_ACTIVE);
     clear_alarm_enable();
     unset_alarm();
 }
 
-void mail_reload_alarm(uint8_t always_enable)
+void mail_set_alarm_state(alarm_state_t alarm_state)
+{
+    nvram_write(NVRAM_ALARM_STATE, alarm_state);
+}
+
+void mail_set_alarm_state(alarm_state_t alarm_state)
 {
     uint8_t alarm_hour = nvram_read(NVRAM_ALARM_HOUR);
     uint8_t alarm_minute = nvram_read(NVRAM_ALARM_MINUTE);
-    uint8_t alarm_enable = always_enable || nvram_read(NVRAM_ALARM_ENABLE);
-    if ((alarm_hour < 24) && (alarm_minute < 60) && alarm_enable) {
-        set_alarm_enable();
-        set_alarm(alarm_hour, alarm_minute);
-    } else {
-        unset_alarm();
+    alarm_state_t old_alarm_state = (alarm_state_t) nvram_read(NVRAM_ALARM_STATE);
+
+    if (force_enable) {
+        alarm_state = ALARM_ENABLED;
     }
+    if ((alarm_hour >= 24) || (alarm_minute >= 60)) {
+        alarm_state = ALARM_DISABLED;
+    }
+
+    set_alarm(alarm_hour, alarm_minute, alarm_state);
+    mail_set_alarm_state(alarm_state);
 }
 
 int mail_init(void)

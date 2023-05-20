@@ -6,10 +6,14 @@
 extern "C" {
 #endif
 
+typedef enum {
+    ALARM_DISABLED = 0,
+    ALARM_ENABLED,
+    ALARM_ACTIVE
+} alarm_state_t;
+
 extern void set_clock(uint8_t hour, uint8_t minute, uint8_t second);
-extern void set_int_pin(char value);
-extern void set_alarm(uint8_t hour, uint8_t minute);
-extern void unset_alarm();
+extern void set_alarm(uint8_t hour, uint8_t minute, alarm_state_t state);
 
 void mail_receive_messages(void);
 int mail_init(void);

@@ -53,6 +53,8 @@ void mail_set_alarm_state(alarm_state_t alarm_state)
 void mail_reload_alarm(int force_enable)
 {
     // Reload the alarm from NVRAM
+    // The alarm may be set in the past - in which case, it may still be sounding,
+    // or it may have finished.
     uint8_t alarm_hour = nvram_read(NVRAM_ALARM_HOUR);
     uint8_t alarm_minute = nvram_read(NVRAM_ALARM_MINUTE);
     alarm_state_t alarm_state = (alarm_state_t) nvram_read(NVRAM_ALARM_STATE);
@@ -63,7 +65,7 @@ void mail_reload_alarm(int force_enable)
     if ((alarm_hour >= 24) || (alarm_minute >= 60)) {
         alarm_state = ALARM_DISABLED;
     }
-    alarm_set(alarm_hour, alarm_minute, alarm_state);
+    alarm_set(alarm_hour, alarm_minute, alarm_state, 0);
 }
 
 int mail_init(void)
@@ -144,12 +146,12 @@ static void new_packet(const uint8_t* payload, int rs_rc)
         case 'A':
             // set alarm
             save_alarm_time(payload[1], payload[2]);
-            alarm_set(payload[1], payload[2], ALARM_ENABLED);
+            alarm_set(payload[1], payload[2], ALARM_ENABLED, 1);
             break;
         case 'a':
             // unset alarm, and cancel if it's active
             // same as pressing the left button
-            alarm_set(0, 0, ALARM_DISABLED);
+            alarm_set(0, 0, ALARM_DISABLED, 0);
             break;
         default:
             display_message("ACTION ERROR");

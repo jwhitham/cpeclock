@@ -357,16 +357,19 @@ static void update_alarm(void)
     }
 }
 
-void alarm_set(uint8_t hour, uint8_t minute, alarm_state_t state)
+void alarm_set(uint8_t hour, uint8_t minute, alarm_state_t state, int force_future)
 {
     char tmp[16];
     switch (state) {
         case ALARM_ENABLED:
             // Reached when the alarm should be enabled, as a result of a message received,
-            // or when booting up, or due to a button press. Adjust the time so that it's in the future.
+            // or when booting up, or due to a button press.
             alarm_time = DateTime(now_time.year(), now_time.month(), now_time.day(), hour, minute, 0);
-            while (alarm_time <= now_time) {
-                alarm_time = alarm_time + ONE_DAY;
+            if (force_future) {
+                // Adjust the time so that it's in the future.
+                while (alarm_time <= now_time) {
+                    alarm_time = alarm_time + ONE_DAY;
+                }
             }
             snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", alarm_time.hour(), alarm_time.minute());
             display_message(tmp);
@@ -402,7 +405,7 @@ void loop()
                 && (alarm_time <= now_time)
                 && (now_time <= (alarm_time + ALARM_ON_TIME))) {
                     // alarm should sound
-                    alarm_set(0, 0, ALARM_ACTIVE);
+                    alarm_set(0, 0, ALARM_ACTIVE, 0);
                 }
                 break;
             case ALARM_ACTIVE:
@@ -410,7 +413,7 @@ void loop()
                 || (now_time > (alarm_time + ALARM_ON_TIME))) {
                     // timeout - alarm should stop
                     // same as pressing the left button
-                    alarm_set(0, 0, ALARM_DISABLED);
+                    alarm_set(0, 0, ALARM_DISABLED, 0);
                 }
                 break;
             default:
@@ -436,7 +439,7 @@ void loop()
     }
     if (CircuitPlayground.leftButton()) {
         // left button - cancel / disable alarm
-        alarm_set(0, 0, ALARM_DISABLED);
+        alarm_set(0, 0, ALARM_DISABLED, 0);
     }
     if (allow_sound != CircuitPlayground.slideSwitch()) {
         // Switch moved

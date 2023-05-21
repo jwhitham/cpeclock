@@ -1,0 +1,134 @@
+
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+
+#include "hal.h"
+#include "nvram.h"
+#include "alarm.h"
+
+typedef enum {
+    ALARM_DISABLED = 0,
+    ALARM_ENABLED,
+    ALARM_ACTIVE,
+    ALARM_RESET,
+    ALARM_INVALID_STATE,
+} alarm_state_t;
+
+static uint16_t alarm_time = 0; // In minutes. Midnight = 0, Midday = 720, 11pm = 1380
+static alarm_state_t alarm_state = ALARM_DISABLED;
+
+#define WHOLE_DAY (24*60)
+#define ALARM_SOUNDS_FOR (10) // minutes
+
+
+static void save_to_nvram()
+{
+    nvram_write(NVRAM_ALARM_HI, alarm_time >> 8);
+    nvram_write(NVRAM_ALARM_LO, alarm_time);
+    nvram_write(NVRAM_ALARM_STATE, (uint8_t) alarm_state);
+}
+
+// Called as a result of an incoming message. Alarm is set for some time in the future.
+void alarm_set(uint8_t hour, uint8_t minute)
+{
+    char tmp[16];
+    alarm_time = (hour * 60) + minute;
+    alarm_state = ALARM_ENABLED;
+    snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", hour, minute);
+    display_message(tmp);
+    save_to_nvram();
+}
+
+// Called as a result of an incoming message, or pressing the left button. Alarm is unset.
+void alarm_unset(void)
+{
+    alarm_state = ALARM_DISABLED;
+    display_message("ALARM OFF");
+    save_to_nvram();
+}
+
+// Called as a result of pressing the right button. Alarm is set for the same time again - but in the future.
+void alarm_reset(void)
+{
+    alarm_state = ALARM_RESET;
+    display_message("ALARM RESET");
+    save_to_nvram();
+}
+
+// Get the alarm time
+void alarm_get(uint8_t* hour, uint8_t* minute)
+{
+    *hour = alarm_time / 60;
+    *minute = alarm_time % 60;
+}
+
+// Returns 1 if the alarm should be sounding now.
+int alarm_update(uint8_t now_hour, uint8_t now_minute)
+{
+    uint16_t now_time = (now_hour * 60) + now_minute;
+    uint16_t test_time = alarm_time;
+    uint16_t i, in_active_region = 0;
+
+    for (i = 0; i < ALARM_SOUNDS_FOR; i++) {
+        if (test_time >= WHOLE_DAY) {
+            test_time = 0;
+        }
+        if (test_time == now_time) {
+            in_active_region = 1;
+            break;
+        }
+        test_time++;
+    }
+
+    switch(alarm_state) {
+        case ALARM_ACTIVE:
+            // alarm already sounding
+            if (!in_active_region) {
+                // stop - timeout
+                alarm_state = ALARM_ENABLED;
+                save_to_nvram();
+                return 0;
+            } else {
+                return 1;
+            }
+        case ALARM_ENABLED:
+            if (in_active_region) {
+                // alarm begins to sound
+                alarm_state = ALARM_ACTIVE;
+                save_to_nvram();
+                return 1;
+            }
+            return 0;
+        case ALARM_RESET:
+            // alarm has been reset
+            if (!in_active_region) {
+                alarm_state = ALARM_ENABLED;
+                save_to_nvram();
+            }
+            return 0;
+        case ALARM_DISABLED:
+            return 0;
+        default:
+            return 0;
+    }
+}
+
+// Called during boot
+void alarm_init(void)
+{
+    uint8_t hi = nvram_read(NVRAM_ALARM_HI);
+    uint8_t lo = nvram_read(NVRAM_ALARM_LO);
+    alarm_state = (alarm_state_t) nvram_read(NVRAM_ALARM_STATE);
+
+    if ((uint8_t) alarm_state >= (uint8_t) ALARM_INVALID_STATE) {
+        alarm_state = ALARM_DISABLED;
+        save_to_nvram();
+    }
+    alarm_time = ((uint16_t) hi << 8) | (uint16_t) lo;
+    if (alarm_time >= WHOLE_DAY) {
+        alarm_time = 0;
+        save_to_nvram();
+    }
+}
+

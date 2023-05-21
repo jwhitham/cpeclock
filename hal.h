@@ -15,7 +15,7 @@ extern void nvram_write(uint8_t addr, uint8_t data);
 extern void display_message(const char* msg);
 extern uint32_t micros();
 extern void set_int_pin(char value);
-extern void set_clock(uint8_t hour, uint8_t minute, uint8_t second);
+extern void clock_set(uint8_t hour, uint8_t minute, uint8_t second);
 
 
 #ifdef __cplusplus

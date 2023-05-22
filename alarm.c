@@ -32,7 +32,7 @@ void alarm_set(uint8_t hour, uint8_t minute)
 {
     char tmp[16];
     alarm_time = (hour * 60) + minute;
-    alarm_state = ALARM_ENABLED;
+    alarm_state = ALARM_RESET;
     snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", hour, minute);
     display_message(tmp);
     save_to_nvram();
@@ -85,7 +85,7 @@ unsigned alarm_update(uint8_t now_hour, uint8_t now_minute)
             // alarm already sounding
             if (!in_active_region) {
                 // stop - timeout
-                alarm_state = ALARM_ENABLED;
+                alarm_state = ALARM_DISABLED;
                 save_to_nvram();
                 return 0;
             } else {
@@ -101,7 +101,9 @@ unsigned alarm_update(uint8_t now_hour, uint8_t now_minute)
                 return 0;
             }
         case ALARM_RESET:
-            // alarm has been reset
+            // alarm has been set or reset
+            // It won't actually be enabled until after it has left the active region.
+            // Otherwise it would retrigger immediately.
             if (!in_active_region) {
                 alarm_state = ALARM_ENABLED;
                 save_to_nvram();

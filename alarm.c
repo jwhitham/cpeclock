@@ -18,8 +18,6 @@ typedef enum {
 static uint16_t alarm_time = 0; // In minutes. Midnight = 0, Midday = 720, 11pm = 1380
 static alarm_state_t alarm_state = ALARM_DISABLED;
 
-#define WHOLE_DAY (24*60)
-#define ALARM_SOUNDS_FOR (10) // minutes
 
 
 static void save_to_nvram()
@@ -63,19 +61,20 @@ void alarm_get(uint8_t* hour, uint8_t* minute)
     *minute = alarm_time % 60;
 }
 
-// Returns 1 if the alarm should be sounding now.
-int alarm_update(uint8_t now_hour, uint8_t now_minute)
+// Returns > 0 if the alarm should be sounding now.
+// The return value is the number of minutes since activation, rounded up.
+unsigned alarm_update(uint8_t now_hour, uint8_t now_minute)
 {
     uint16_t now_time = (now_hour * 60) + now_minute;
     uint16_t test_time = alarm_time;
-    uint16_t i, in_active_region = 0;
+    unsigned i, in_active_region = 0;
 
-    for (i = 0; i < ALARM_SOUNDS_FOR; i++) {
+    for (i = 1; i <= ALARM_SOUNDS_FOR; i++) {
         if (test_time >= WHOLE_DAY) {
             test_time = 0;
         }
         if (test_time == now_time) {
-            in_active_region = 1;
+            in_active_region = i;
             break;
         }
         test_time++;
@@ -90,16 +89,17 @@ int alarm_update(uint8_t now_hour, uint8_t now_minute)
                 save_to_nvram();
                 return 0;
             } else {
-                return 1;
+                return in_active_region;
             }
         case ALARM_ENABLED:
             if (in_active_region) {
                 // alarm begins to sound
                 alarm_state = ALARM_ACTIVE;
                 save_to_nvram();
-                return 1;
+                return in_active_region;
+            } else {
+                return 0;
             }
-            return 0;
         case ALARM_RESET:
             // alarm has been reset
             if (!in_active_region) {

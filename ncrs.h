@@ -1,13 +1,13 @@
 #ifndef NCRS_H
 #define NCRS_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdint.h>
 #include "rx433.h"
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define MSG_SYMBOLS         (21)    // 21 message symbols
 

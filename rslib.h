@@ -19,14 +19,14 @@
 #ifndef _RSLIB_H_
 #define _RSLIB_H_
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <string.h>
 
 #include "config.h"
 #include "list.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * struct rs_control - rs control structure

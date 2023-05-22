@@ -2,10 +2,11 @@
 
 CFLAGS=-I.. -Wall -g
 
-test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt txnc433.exe
+test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt txnc433.exe test_alarm.exe
 	./test_rx433.exe
 	./test_hmac433.exe
 	./test_rs.exe
+	./test_alarm.exe
 
 clean:
 	rm -f *.o ../*.o *.exe test_rx433.txt
@@ -29,6 +30,9 @@ test_rs.exe: test_rs.c \
 					../ncrs.c ../ncrs.h \
 					../sha256.c ../sha256.h
 	gcc -o test_rs.exe test_rs.c ../ncrs.c ../sha256.c ../reed_solomon.c $(CFLAGS)
+
+test_alarm.exe: test_alarm.c ../alarm.c ../alarm.h
+	gcc -o test_alarm.exe test_alarm.c ../alarm.c $(CFLAGS)
 
 txnc433.exe: txnc433.c \
 					../hmac433.c ../hmac433.h \

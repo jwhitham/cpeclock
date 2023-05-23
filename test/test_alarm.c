@@ -204,7 +204,7 @@ int main(void)
     no_alarm_all_day("07:00");
     no_alarm_all_day("07:00");
 
-    // power interrupt during alarm time
+    // power interrupt during alarm time - lasts for a long time
     // test: alarm set at 06:00 but power is interrupted from 06:02 .. 07:00
     alarm_set(6, 0);
     run("06:00", 0, 1, 6 * 60); // run to 06:00
@@ -212,6 +212,31 @@ int main(void)
     power_off_time_skip(7, 0);  // power back on at 07:00
     no_alarm_all_day("06:00");  // no alarm - already timed out
     no_alarm_all_day("06:00");
+
+    // test: alarm set again while it is sounding
+    alarm_set(1, 0);
+    run("setset", 0, 1, 60); // run to 01:00
+    alarm_set(2, 0);         // alarm stops
+    run("setset", 0, 1, 60); // run to 02:00 - alarm starts again
+    alarm_set(3, 0);         // alarm stops
+    power_off_time_skip(2, 30); // power goes off for a while
+    run("setset", 0, 1, 30);  // alarm sounds again at 3am
+    alarm_set(4, 0);         // alarm stops
+    power_off_time_skip(3, 59); // power goes off for even longer
+    run("setset", 0, 1, 1);  // trigger at 4am
+    run("setset", X, 0, ALARM_SOUNDS_FOR);
+    no_alarm_all_day("setset");
+    no_alarm_all_day("setset");
+
+    // test: corner case - if the alarm is set, and then power immediately goes out until
+    // the beginning of the alarm time, the alarm does not trigger
+    alarm_set(4, 0);
+    power_off_time_skip(4, 0);
+    no_alarm_all_day("corner"); // alarm does not sound at 4am
+    power_off_time_skip(4, 0);
+    run("corner", 0, 1, 0);  // trigger at 4am the next day (as there has been an alarm_update)
+    run("corner", X, 0, ALARM_SOUNDS_FOR);
+    no_alarm_all_day("corner");
 
 
     printf("ok\n");

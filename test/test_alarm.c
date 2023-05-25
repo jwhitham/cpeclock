@@ -87,8 +87,6 @@ static void power_off_time_skip(uint8_t hour, uint8_t minute)
     now_minute = minute;
 }
 
-// Called as a result of an incoming message. Alarm is set for some time in the future.
-//void alarm_set(uint8_t hour, uint8_t minute);
 
 // Called as a result of an incoming message, or pressing the left button. Alarm is unset.
 //void alarm_unset(void);
@@ -170,6 +168,15 @@ int main(void)
     run("00:01", X, 0, ALARM_SOUNDS_FOR); // timeout
     no_alarm_all_day("midnight+1");
 
+    // power interrupt before alarm; power restored before alarm should be sounding
+    // test: alarm set at 09:00 but power is interrupted from 08:00 .. 08:05
+    alarm_set(9, 0);
+    run("08:05", 0, 0, 8 * 60); // run to 08:00
+    power_off_time_skip(8, 5); // power back on at 08:05
+    run("09:00", 0, 1, 55); // alarm starts
+    run("00:01", X, 0, ALARM_SOUNDS_FOR); // timeout
+    no_alarm_all_day("08:05");
+
     // power interrupt before alarm; power restored while alarm should be sounding
     // test: alarm set at 09:00 but power is interrupted from 08:55 .. 09:05
     alarm_set(9, 0);
@@ -229,7 +236,8 @@ int main(void)
     no_alarm_all_day("setset");
 
     // test: corner case - if the alarm is set, and then power immediately goes out until
-    // the beginning of the alarm time, the alarm does not trigger
+    // the beginning of the alarm time, the alarm does not trigger. In the real application
+    // we would do alarm_update soon after alarm_set so this would not happen.
     alarm_set(4, 0);
     power_off_time_skip(4, 0);
     no_alarm_all_day("corner"); // alarm does not sound at 4am
@@ -237,6 +245,37 @@ int main(void)
     run("corner", 0, 1, 0);  // trigger at 4am the next day (as there has been an alarm_update)
     run("corner", X, 0, ALARM_SOUNDS_FOR);
     no_alarm_all_day("corner");
+
+    // test: alarm is cancelled with the left button after it sounds (immediate cancel)
+    alarm_set(10, 0);
+    run("10:00i", 0, 1, 10 * 60); // run to 10:00
+    alarm_unset();
+    no_alarm_all_day("10:00i");
+    no_alarm_all_day("10:00i"); // no alarm the next day either
+
+    // test: alarm is cancelled with the left button after it sounds (after 1 minute)
+    alarm_set(10, 0);
+    run("10:00", 0, 1, 10 * 60); // run to 10:00
+    run("10:00", 1, 2, 1); // run to 10:01
+    alarm_unset();
+    no_alarm_all_day("10:00");
+    no_alarm_all_day("10:00");
+
+    // test: alarm is cancelled with the left button before it sounds
+    alarm_set(10, 0);
+    run("10:00x", 0, 0, 9 * 60); // run to 09:00
+    alarm_unset();
+    no_alarm_all_day("10:00x");
+    no_alarm_all_day("10:00x");
+
+    // test: alarm is cancelled with the left button before it sounds and also the power is cycled
+    alarm_set(10, 0);
+    run("10:00y", 0, 0, 9 * 60); // run to 09:00
+    alarm_unset();
+    run("10:00y", 0, 0, 30); // run to 09:30
+    power_off_time_skip(9, 35); // power back on at 09:35
+    no_alarm_all_day("10:00y");
+    no_alarm_all_day("10:00y");
 
 
     printf("ok\n");

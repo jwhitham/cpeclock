@@ -1,23 +1,43 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "alarm.h"
 #include "nvram.h"
 
 #define X (~((unsigned)0))
+#define FINAL_VALID_STATE 3
 
 static uint8_t test_nvram[256];
+static uint8_t states_covered[256];
 static uint8_t now_minute = 0;
 static uint8_t now_hour = 0;
 
 uint8_t nvram_read(uint8_t addr)
 {
+    if ((addr != NVRAM_ALARM_HI) && (addr != NVRAM_ALARM_LO)
+    && (addr != NVRAM_ALARM_STATE)) {
+        fprintf(stderr, "error: read from unexpected address 0x%x\n", addr);
+        exit(1);
+    }
     return test_nvram[addr];
 }
 
 void nvram_write(uint8_t addr, uint8_t data)
 {
+    if ((addr != NVRAM_ALARM_HI) && (addr != NVRAM_ALARM_LO)
+    && (addr != NVRAM_ALARM_STATE)) {
+        fprintf(stderr, "error: write to unexpected address 0x%x\n", addr);
+        exit(1);
+    }
+    if (addr == NVRAM_ALARM_STATE) {
+        states_covered[data] = 1;
+        if (data > FINAL_VALID_STATE) {
+            fprintf(stderr, "error: write of weird value to state: 0x%x\n", data);
+            exit(1);
+        }
+    }
     test_nvram[addr] = data;
 }
 
@@ -106,12 +126,13 @@ static void power_off_time_skip(uint8_t hour, uint8_t minute)
 
 int main(void)
 {
-    uint8_t h, m, i;
-    uint16_t hm;
+    uint8_t h, m;
+    uint16_t hm, i;
 
     alarm_init();
 
     // test: initially, no alarms are set
+    no_alarm_all_day("initial");
     no_alarm_all_day("initial");
     // test: alarm is set at 1am, check for correct setting
     alarm_set(1, 0);
@@ -183,7 +204,7 @@ int main(void)
     run("09:05", 0, 0, (9 * 60) - 5); // run to 08:55
     power_off_time_skip(9, 5); // power back on at 09:05
     for (i = 6; i <= ALARM_SOUNDS_FOR; i++) {
-        run("reset", X, i, 0); // triggered immediately (begin at 6th minute)
+        run("09:05", X, i, 0); // triggered immediately (begin at 6th minute)
         advance();
     }
     run("09:05", X, 0, 0); // timeout
@@ -277,6 +298,98 @@ int main(void)
     no_alarm_all_day("10:00y");
     no_alarm_all_day("10:00y");
 
+    // test: reactivate the alarm at the previous time
+    run("react", 0, 0, 60); // run to 01:00
+    alarm_reset();
+    run("react", 0, 1, 9 * 60); // run to 10:00, alarm sounds
+    alarm_reset();              // alarm stops (is now reset)
+    no_alarm_all_day("react");
+    run("react", 0, 1, 10 * 60); // run to 10:00, alarm sounds again
+    alarm_unset();              // alarm stops (is now unset)
+    no_alarm_all_day("react");
+    no_alarm_all_day("react");  // no more alarm
+
+    // test: alarm is set then cancelled
+    alarm_set(14, 0);
+    run("setca", 0, 0, 1);
+    alarm_unset();
+    no_alarm_all_day("setca");  // does not retrigger
+
+    // test: alarm is set, cancelled, then reset all at once
+    alarm_set(14, 0);
+    alarm_unset();
+    alarm_reset();
+    run("14:00", 0, 1, 14 * 60);
+    run("14:00", X, 0, ALARM_SOUNDS_FOR);
+    no_alarm_all_day("14:00");  // run back to midnight
+    no_alarm_all_day("14:00");  // does not retrigger
+    alarm_reset();
+    run("14:00", 0, 1, 14 * 60);
+    alarm_reset();
+    no_alarm_all_day("14:00");
+    run("14:00", 0, 1, 14 * 60);
+    alarm_unset();
+    no_alarm_all_day("14:00");
+    no_alarm_all_day("14:00");
+
+    // test: reset, power off, alarm
+    alarm_set(14, 1);
+    for (i = 0; i < 14; i++) {
+        switch (i % 4) {
+            case 0:
+                alarm_unset();
+                run("rp", 0, 0, 60);
+                break;
+            case 1:
+                alarm_reset();
+                run("rp", 0, 0, 60);
+                break;
+            default:
+                power_off_time_skip(now_hour, 5);
+                run("rp", 0, 0, 55);
+                break;
+        }
+    }
+    run("rp", 0, 1, 1);
+    run("rp", X, 0, ALARM_SOUNDS_FOR);
+    no_alarm_all_day("rp");
+    no_alarm_all_day("rp");
+
+    alarm_get(&h, &m);
+    hm = (h * 60) + m;
+    if ((test_nvram[NVRAM_ALARM_HI] != (hm >> 8))
+    || (test_nvram[NVRAM_ALARM_LO] != (hm & 255))
+    || (h != 14) || (m != 1)) {
+        fprintf(stderr, "error: 14:01: incorrect setting\n");
+        exit(1);
+    }
+
+    // test: press right button in initial state, with all memory == 0
+    // alarm triggers at 00:00
+    memset(test_nvram, 0, sizeof(test_nvram));
+    power_off_time_skip(12, 0);
+    alarm_reset();
+    no_alarm_all_day("blank");
+    run("blank", 0, 1, 0);
+    run("blank", X, 0, ALARM_SOUNDS_FOR);
+    no_alarm_all_day("blank");
+
+    // test: press right button in weird state, with all memory == 0xff
+    // alarm triggers at 00:00
+    memset(test_nvram, 0xff, sizeof(test_nvram));
+    power_off_time_skip(12, 0);
+    alarm_reset();
+    no_alarm_all_day("ff");
+    run("ff", 0, 1, 0);
+    run("ff", X, 0, ALARM_SOUNDS_FOR);
+    no_alarm_all_day("ff");
+
+    for (i = 0; i < FINAL_VALID_STATE; i++) {
+        if (!states_covered[i]) {
+            fprintf(stderr, "error: no coverage of state %d\n", i);
+            exit(1);
+        }
+    }
 
     printf("ok\n");
     return 0;

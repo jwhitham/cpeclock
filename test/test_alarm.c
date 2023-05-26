@@ -108,22 +108,6 @@ static void power_off_time_skip(uint8_t hour, uint8_t minute)
 }
 
 
-// Called as a result of an incoming message, or pressing the left button. Alarm is unset.
-//void alarm_unset(void);
-//
-// Called as a result of pressing the right button. Alarm is set for the same time again - but in the future.
-//void alarm_reset(void);
-//
-//// Get the alarm time
-//void alarm_get(uint8_t* hour, uint8_t* minute);
-//
-//// Returns 1 if the alarm should be sounding now.
-//int alarm_update(uint8_t now_hour, uint8_t now_minute);
-//
-//// Called during boot
-//void alarm_init(void);
-
-
 int main(void)
 {
     uint8_t h, m;
@@ -383,6 +367,21 @@ int main(void)
     run("ff", 0, 1, 0);
     run("ff", X, 0, ALARM_SOUNDS_FOR);
     no_alarm_all_day("ff");
+
+    // test: alarm_unset / alarm_reset return 0 if there is nothing to do
+    if ((alarm_unset() != 0)
+    || (alarm_reset() != 1)
+    || (alarm_reset() != 0)
+    || (alarm_reset() != 0)
+    || (alarm_unset() != 1)
+    || (alarm_unset() != 0)
+    || (alarm_unset() != 0)
+    || (alarm_reset() != 1)
+    || (alarm_reset() != 0)) {
+        fprintf(stderr, "error: unset/reset don't return values as expected\n");
+        exit(1);
+    }
+
 
     for (i = 0; i < FINAL_VALID_STATE; i++) {
         if (!states_covered[i]) {

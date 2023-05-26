@@ -12,13 +12,13 @@ extern "C" {
 #define ALARM_SOUNDS_FOR (10) // minutes
 
 // Called as a result of an incoming message. Alarm is set for some time in the future.
-void alarm_set(uint8_t hour, uint8_t minute);
+int alarm_set(uint8_t hour, uint8_t minute);
 
 // Called as a result of an incoming message, or pressing the left button. Alarm is unset.
-void alarm_unset(void);
+int alarm_unset(void);
 
 // Called as a result of pressing the right button. Alarm is set for the same time again - but in the future.
-void alarm_reset(void);
+int alarm_reset(void);
 
 // Get the alarm time
 void alarm_get(uint8_t* hour, uint8_t* minute);

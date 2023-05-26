@@ -20,6 +20,8 @@
 #define LINE_1_Y ((SCREEN_HEIGHT / 2) + 2)
 #define LINE_2_Y (SCREEN_HEIGHT - 5)
 
+#define CAP_SAMPLES      20   // Number of samples to take for a capacitive touch read.
+#define CAP_THRESHOLD 800
 
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3c ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
@@ -46,12 +48,11 @@ static const TimeSpan ONE_DAY = TimeSpan(1, 0, 0, 0);
 static DateTime now_time = INVALID_TIME;
 static DateTime screen_off_time = INVALID_TIME;
 static DateTime message_off_time = INVALID_TIME;
-static DateTime alarm_start_time = INVALID_TIME;
 
 static char message_buffer[32];
 static uint16_t clock_text_x = 0;
 static bool allow_sound = false;
-static bool alarm_active = false;
+static unsigned alarm_active = 0;
 static uint32_t millisecond_offset = 0;
 static uint32_t last_running_time = 0;
 static uint32_t sound_trigger = 0;
@@ -230,8 +231,7 @@ static void update_alarm(void)
     uint32_t i;
 
     // How many milliseconds has the alarm been running for?
-    uint32_t running_time = (now_time - alarm_start_time).totalseconds() * 1000;
-    running_time += millis() - millisecond_offset;
+    uint32_t running_time = (alarm_active * 60000) + millis() - millisecond_offset;
 
     // How many milliseconds since the last time update_alarm ran?
     uint32_t millisecond_delta = running_time - last_running_time;
@@ -367,20 +367,20 @@ void loop()
     now_time = rtc.now();
 
     if (now_time.second() != previous_second) {
-        // Check for the alarm
-        millisecond_offset = millis();
-        if (alarm_update(now_time.hour(), now_time.minute())) {
-            if (!alarm_active) {
-                alarm_active = true;
-                alarm_start_time = now_time;
-            }
-        } else {
-            alarm_active = false;
-            alarm_start_time = INVALID_TIME;
+        // at the start of the minute, update the millisecond offset
+        if (now_time.second() == 0) {
+            millisecond_offset = millis();
         }
-        update_alarm();
+        if (CircuitPlayground.readCap(PIN_A3, CAP_SAMPLES) >= CAP_THRESHOLD) {
+            screen_off_time = now_time + SCREEN_ON_TIME;
+        }
+        // Check for the alarm
+        alarm_active = alarm_update(now_time.hour(), now_time.minute());
+        if (alarm_active) {
+            update_alarm();
+        }
         update_display();
-    } else if (alarm_active) {
+    } else if (alarm_active > 0) {
         // Update the alarm frequently when active
         update_alarm();
     }
@@ -390,15 +390,17 @@ void loop()
 
     if (CircuitPlayground.rightButton()) {
         // right button
-        alarm_reset();
-        alarm_active = false;
-        update_alarm();
+        if (alarm_reset()) {
+            alarm_active = alarm_update(now_time.hour(), now_time.minute());
+            update_alarm();
+        }
     }
     if (CircuitPlayground.leftButton()) {
         // left button - cancel / disable alarm
-        alarm_unset();
-        alarm_active = false;
-        update_alarm();
+        if (alarm_unset()) {
+            alarm_active = alarm_update(now_time.hour(), now_time.minute());
+            update_alarm();
+        }
     }
     if (allow_sound != CircuitPlayground.slideSwitch()) {
         // Switch moved

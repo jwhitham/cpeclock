@@ -28,30 +28,34 @@ static void save_to_nvram()
 }
 
 // Called as a result of an incoming message. Alarm is set for some time in the future.
-void alarm_set(uint8_t hour, uint8_t minute)
+int alarm_set(uint8_t hour, uint8_t minute)
 {
     char tmp[16];
+    alarm_state_t old_state = alarm_state;
     alarm_time = (hour * 60) + minute;
     alarm_state = ALARM_RESET;
     snprintf(tmp, sizeof(tmp), "ALARM %02d:%02d", hour, minute);
     display_message(tmp);
     save_to_nvram();
+    return old_state != alarm_state;
 }
 
 // Called as a result of an incoming message, or pressing the left button. Alarm is unset.
-void alarm_unset(void)
+int alarm_unset(void)
 {
-    alarm_state = ALARM_DISABLED;
+    alarm_state_t old_state = alarm_state;
     display_message("ALARM OFF");
+    alarm_state = ALARM_DISABLED;
     save_to_nvram();
+    return old_state != alarm_state;
 }
 
 // Called as a result of pressing the right button. Alarm is set for the same time again - but in the future.
-void alarm_reset(void)
+int alarm_reset(void)
 {
-    alarm_state = ALARM_RESET;
-    display_message("ALARM RESET");
-    save_to_nvram();
+    uint8_t hour, minute;
+    alarm_get(&hour, &minute);
+    return alarm_set(hour, minute);
 }
 
 // Get the alarm time
@@ -123,14 +127,13 @@ void alarm_init(void)
     uint8_t lo = nvram_read(NVRAM_ALARM_LO);
     alarm_state = (alarm_state_t) nvram_read(NVRAM_ALARM_STATE);
 
-    if ((uint8_t) alarm_state >= (uint8_t) ALARM_INVALID_STATE) {
-        alarm_state = ALARM_DISABLED;
-        save_to_nvram();
-    }
     alarm_time = ((uint16_t) hi << 8) | (uint16_t) lo;
     if (alarm_time >= WHOLE_DAY) {
         alarm_time = 0;
-        save_to_nvram();
     }
+    if ((uint8_t) alarm_state >= (uint8_t) ALARM_INVALID_STATE) {
+        alarm_state = ALARM_DISABLED;
+    }
+    save_to_nvram();
 }
 

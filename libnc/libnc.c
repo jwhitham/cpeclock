@@ -9,7 +9,9 @@
 #include <stdlib.h>
 
 
+#include "libnc.h"
 #include "hmac433.h"
+#include "rx433.h"
 #include "ncrs.h"
 
 typedef struct secret_file_s {
@@ -67,7 +69,7 @@ void display_message(const char* msg)
     fprintf(stderr, "error: %s\n", msg);
 }
 
-int libtxnc433_init(void)
+int libnc_init(void)
 {
     if (secret_fd) {
         fprintf(stderr, "already initialised\n");
@@ -90,22 +92,24 @@ int libtxnc433_init(void)
     return 1;
 }
 
-int libtxnc433_send(const uint8_t* payload, size_t size)
+int libnc_encode(const uint8_t* payload, size_t payload_size,
+                 uint8_t* message, size_t max_message_size)
 {
     hmac433_packet_t    packet;
-    uint8_t             message[NC_DATA_SIZE];
     unsigned            i;
-    int                 fd;
 
-    memset(&packet, 0, sizeof(packet));
-    memset(&message, 0, sizeof(message));
-
-    for (i = 0; (i < size) && (i < PACKET_PAYLOAD_SIZE); i++) {
-        packet.payload[i] = payload[i];
+    if (max_message_size < NC_DATA_SIZE) {
+        return 0;
     }
-
     if (!secret_fd) {
         return 0;
+    }
+
+    memset(&packet, 0, sizeof(packet));
+    memset(message, 0, NC_DATA_SIZE);
+
+    for (i = 0; (i < payload_size) && (i < PACKET_PAYLOAD_SIZE); i++) {
+        packet.payload[i] = payload[i];
     }
     hmac433_encode(secret_file.secret_data, sizeof(secret_file.secret_data),
                    &packet, &secret_file.counter);
@@ -130,19 +134,5 @@ int libtxnc433_send(const uint8_t* payload, size_t size)
     if (!save_secret_file()) {
         return 0;
     }
-
-    fd = open("/dev/tx433", O_WRONLY);
-    if (fd < 0) {
-        perror("Unable to open /dev/tx433");
-        return 0;
-    } else {
-        if (write(fd, message, NC_DATA_SIZE) != NC_DATA_SIZE) {
-            perror("Unable to write message");
-            close(fd);
-            return 0;
-        } else {
-            close(fd);
-            return 1;
-        }
-    }
+    return 1;
  }

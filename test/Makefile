@@ -35,10 +35,10 @@ test_rs.exe: test_rs.c \
 test_alarm.exe: test_alarm.c ../alarm.c ../alarm.h
 	gcc -o test_alarm.exe test_alarm.c ../alarm.c $(CFLAGS)
 
-../libtxnc433/libtxnc433.so:
-	make -C ../libtxnc433
+../libnc/libnc.so:
+	make -C ../libnc
 
-txnc433.exe: txnc433.c ../libtxnc433/libtxnc433.a
+txnc433.exe: txnc433.c ../libnc/libnc.a
 	gcc -o txnc433.exe txnc433.c \
-        ../libtxnc433/libtxnc433.a -I../libtxnc433 \
+        ../libnc/libnc.a -I../libnc \
         $(CFLAGS)

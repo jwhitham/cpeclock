@@ -1,6 +1,8 @@
 *.pyc
 *.o
 *.exe
+*.so
+*.a
 test_rx433.txt
 test_rs.txt
 test_hmac433.bin

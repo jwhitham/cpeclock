@@ -2,7 +2,8 @@
 
 CFLAGS=-I.. -Wall -g
 
-test: test_rx433.exe test_hmac433.exe test_rs.exe test_rx433.txt txnc433.exe test_alarm.exe
+test: test_rx433.exe test_hmac433.exe test_rs.exe \
+        test_rx433.txt txnc433.exe test_alarm.exe
 	./test_rx433.exe
 	./test_hmac433.exe
 	./test_rs.exe
@@ -34,11 +35,10 @@ test_rs.exe: test_rs.c \
 test_alarm.exe: test_alarm.c ../alarm.c ../alarm.h
 	gcc -o test_alarm.exe test_alarm.c ../alarm.c $(CFLAGS)
 
-txnc433.exe: txnc433.c \
-					../hmac433.c ../hmac433.h \
-					../hmac.c ../hmac.h \
-					../reed_solomon.c ../rslib.h ../decode_rs.h ../encode_rs.h \
-					../ncrs.c ../ncrs.h \
-					../sha256.c ../sha256.h
-	gcc -o txnc433.exe txnc433.c ../ncrs.c ../sha256.c \
-				../hmac433.c ../hmac.c ../reed_solomon.c $(CFLAGS)
+../libtxnc433/libtxnc433.so:
+	make -C ../libtxnc433
+
+txnc433.exe: txnc433.c ../libtxnc433/libtxnc433.a
+	gcc -o txnc433.exe txnc433.c \
+        ../libtxnc433/libtxnc433.a -I../libtxnc433 \
+        $(CFLAGS)

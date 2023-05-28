@@ -1,0 +1,7 @@
+FOO {
+  global:
+    libtxnc433_init;
+    libtxnc433_send;
+  local:
+    *;
+};

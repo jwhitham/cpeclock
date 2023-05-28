@@ -37,6 +37,8 @@ static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define PERIOD 10 // milliseconds
 
+#define CAP_CYCLES  10
+
 static RTC_DS1307 rtc;     // RTC address 0x68
 
 
@@ -48,6 +50,9 @@ static const TimeSpan ONE_DAY = TimeSpan(1, 0, 0, 0);
 static DateTime now_time = INVALID_TIME;
 static DateTime screen_off_time = INVALID_TIME;
 static DateTime message_off_time = INVALID_TIME;
+
+static uint32_t cap_total = 0;
+static uint32_t cap_data[CAP_CYCLES] = {0};
 
 static char message_buffer[32];
 static uint16_t clock_text_x = 0;
@@ -231,7 +236,7 @@ static void update_alarm(void)
     uint32_t i;
 
     // How many milliseconds has the alarm been running for?
-    uint32_t running_time = (alarm_active * 60000) + millis() - millisecond_offset;
+    uint32_t running_time = ((alarm_active - 1) * 60000) + millis() - millisecond_offset;
 
     // How many milliseconds since the last time update_alarm ran?
     uint32_t millisecond_delta = running_time - last_running_time;
@@ -262,8 +267,8 @@ static void update_alarm(void)
             strobe_trigger = 0;
             break;
         case 2:
-            // strobing, once a second
-            if (strobe_trigger >= 1000) {
+            // strobing, once every two seconds
+            if (strobe_trigger >= 2000) {
                 CircuitPlayground.strip.setBrightness(255);
                 strobe_trigger = 0;
             } else {
@@ -360,6 +365,24 @@ static void update_alarm(void)
     }
 }
 
+static void update_cap_input()
+{
+    uint32_t cap_measured = CircuitPlayground.readCap(PIN_A3, 1);
+    uint32_t cycle = now_time.second() % CAP_CYCLES;
+    uint32_t cap_upper_threshold = cap_total * (120 / CAP_CYCLES);
+    uint32_t cap_lower_threshold = cap_total * (80 / CAP_CYCLES);
+    uint32_t cap_measured_percent = cap_measured * 100;
+
+    if ((cap_measured_percent <= cap_lower_threshold)
+    || (cap_measured_percent >= cap_upper_threshold)) {
+        // trigger capacitive input
+        screen_off_time = now_time + SCREEN_ON_TIME;
+    }
+
+    cap_total -= cap_data[cycle];
+    cap_data[cycle] = cap_measured;
+    cap_total += cap_measured;
+}
 
 void loop()
 {
@@ -371,9 +394,8 @@ void loop()
         if (now_time.second() == 0) {
             millisecond_offset = millis();
         }
-        if (CircuitPlayground.readCap(PIN_A3, CAP_SAMPLES) >= CAP_THRESHOLD) {
-            screen_off_time = now_time + SCREEN_ON_TIME;
-        }
+        // Check capacitive input
+        update_cap_input();
         // Check for the alarm
         alarm_active = alarm_update(now_time.hour(), now_time.minute());
         if (alarm_active) {

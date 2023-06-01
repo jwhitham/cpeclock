@@ -4,20 +4,9 @@ CFLAGS=-I.. -Wall -g -O2
 CC=gcc
 
 SRCS = libnc.c ../hmac433.c ../hmac.c \
-        ../reed_solomon.c ../ncrs.c ../sha256.c 
+        ../reed_solomon.c ../ncrs.c ../sha256.c \
+        udp.c local.c txnc433.c
 
-OBJS = libnc.o ../hmac433.o ../hmac.o \
-        ../reed_solomon.o ../ncrs.o ../sha256.o 
-
-HEADERS = ../hmac433.h ../hmac.h ../rslib.h \
-        ../decode_rs.h ../encode_rs.h ../ncrs.h ../sha256.h
-
-main: libnc.so
-
-libnc.a: $(OBJS) $(HEADERS)
-	ar rf libnc.a $(OBJS)
-
-clean:
-	rm -f libnc.a $(OBJS)
-
+txnc433: $(SRCS)
+	gcc -o txnc433 $(SRCS) -I.. $(CFLAGS)
 

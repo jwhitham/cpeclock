@@ -18,14 +18,14 @@ import RPi.GPIO as GPIO  # type: ignore
 import urllib.request
 from pathlib import Path
 
-DEBUG = (os.getenv("HEDEBUG") == "HEDEBUG")
-
 Short_Name = str
 Light_Data = typing.Dict[str, str]
 All_Light_Data = typing.Dict[Short_Name, Light_Data]
 
 CACHE_DATA: All_Light_Data = {}
 CACHE_EXPIRY_TIME = 0.0
+NC_DATA_SIZE = 21
+NC_HEADER_SIZE = 2
 
 def get_all_light_data() -> All_Light_Data:
     global CACHE_EXPIRY_TIME, CACHE_DATA
@@ -46,6 +46,28 @@ def get_all_light_data() -> All_Light_Data:
         return CACHE_DATA
 
 
+
+class AbstractData:
+    def encode(self) -> bytes:
+        return b""
+
+class NCData(AbstractData):
+    def __init__(self, msg: bytes) -> None:
+        self.msg = msg
+
+    def encode(self) -> bytes:
+        print ("broadcast NC message at %s" % (time.asctime()))
+        return self.msg
+
+class HEData(AbstractData):
+    def __init__(self, number: int) -> None:
+        self.number = number
+
+    def encode(self) -> bytes:
+        print ("broadcast %08x at %s" % (self.number, time.asctime()))
+        return ("%08x\n" % self.number).encode("ascii")
+
+
 class Server433(DatagramProtocol):
     def __init__(self) -> None:
         print ('startup %s' % DEVICE)
@@ -53,7 +75,7 @@ class Server433(DatagramProtocol):
 
         self.last_day = None
         self.allow_send_at = 0.0
-        self.send_queue: typing.List[int] = []
+        self.send_queue: typing.List[AbstractData] = []
         self.name_to_light_data_map = get_all_light_data()
         self.code_to_name_map: typing.Dict[int, str] = dict()
         for name in self.name_to_light_data_map:
@@ -65,7 +87,7 @@ class Server433(DatagramProtocol):
 
 
         try:
-            self.device = open(DEVICE, "wt")
+            self.device = open(DEVICE, "wb")
         except:
             print('cannot open device')
             sys.exit(1)
@@ -91,24 +113,31 @@ class Server433(DatagramProtocol):
         
     def datagramReceived(self, data_bytes: bytes, host_port: typing.Tuple[str, int]) -> None:
         (host, port) = host_port
-        try:
-            data = data_bytes[:32].decode("ascii")
-        except:
-            data = ""
-        try:
-            number = int(data, 16)
-        except:
-            number = 0
 
-        if not (0 < number < (1 << 32)):
-            self.named_action(data)
-            return
+        if ((len(data_bytes) == (NC_DATA_SIZE + NC_HEADER_SIZE))
+        and data_bytes.startswith(b"NC")):
+            # Code transmitted by txnc433/udp.c
+            self.send(NCData(data_bytes[NC_HEADER_SIZE:]))
+        else:
+            # Probably a code for old Home Easy system
+            try:
+                data = data_bytes[:32].decode("ascii")
+            except:
+                data = ""
+            try:
+                number = int(data, 16)
+            except:
+                number = 0
 
-        # Data for broadcast
-        self.send(number)
+            if not (0 < number < (1 << 32)):
+                self.named_action(data)
+                return
+
+            # Data for broadcast
+            self.send(HEData(number))
     
-    def send(self, number: int) -> None:
-        self.send_queue.append(number)
+    def send(self, data: AbstractData) -> None:
+        self.send_queue.append(data)
         if len(self.send_queue) == 1:
             t = time.time() + SEND_DELAY
             self.allow_send_at = max(self.allow_send_at, t)
@@ -122,11 +151,10 @@ class Server433(DatagramProtocol):
         t = time.time()
         if t >= self.allow_send_at:
             # can send one item
-            number = self.send_queue.pop(0)
+            data = self.send_queue.pop(0)
             self.allow_send_at = t + SEND_INTERVAL
-            
-            print ("broadcast %08x at %s" % (number, time.asctime()))
-            self.device.write("%08x\n" % number)
+           
+            self.device.write(data.encode())
             self.device.flush()
             sys.stdout.flush()
 
@@ -159,7 +187,7 @@ class Server433(DatagramProtocol):
             print ('invalid named action (unknown light)')
             return
         try:
-            self.send(c1)
+            self.send(HEData(c1))
         except:
             print ('invalid named action (send error)')
             return

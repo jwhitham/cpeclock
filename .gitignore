@@ -7,4 +7,4 @@ test_rx433.txt
 test_rs.txt
 test_hmac433.bin
 secret.h
-txnc433
+/txnc433/txnc433

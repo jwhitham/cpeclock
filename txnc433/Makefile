@@ -17,11 +17,7 @@ main: libnc.so
 libnc.a: $(OBJS) $(HEADERS)
 	ar rf libnc.a $(OBJS)
 
-libnc.so: libnc.a
-	$(CC) -shared -o libnc.so \
-        $(OBJS) -Wl,--version-script=libnc.version
-
 clean:
-	rm -f libnc.so libnc.a $(OBJS)
+	rm -f libnc.a $(OBJS)
 
 

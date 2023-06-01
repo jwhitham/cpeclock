@@ -3,7 +3,7 @@
 CFLAGS=-I.. -Wall -g
 
 test: test_rx433.exe test_hmac433.exe test_rs.exe \
-        test_rx433.txt txnc433.exe test_alarm.exe
+        test_rx433.txt test_alarm.exe
 	./test_rx433.exe
 	./test_hmac433.exe
 	./test_rs.exe
@@ -34,11 +34,3 @@ test_rs.exe: test_rs.c \
 
 test_alarm.exe: test_alarm.c ../alarm.c ../alarm.h
 	gcc -o test_alarm.exe test_alarm.c ../alarm.c $(CFLAGS)
-
-../libnc/libnc.so:
-	make -C ../libnc
-
-txnc433.exe: txnc433.c ../libnc/libnc.a
-	gcc -o txnc433.exe txnc433.c \
-        ../libnc/libnc.a -I../libnc \
-        $(CFLAGS)

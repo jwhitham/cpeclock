@@ -1,7 +1,0 @@
-FOO {
-  global:
-    libnc_init;
-    libnc_encode;
-  local:
-    *;
-};

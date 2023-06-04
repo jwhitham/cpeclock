@@ -11,9 +11,12 @@ PORT = 433
 ROOT = Path(__file__).parent
 LIGHT_DATA_FILE: typing.Optional[Path] = Path("/srv/root_services/lights.json")
 SEND_INTERVAL = 2.5
-SEND_DELAY = 1.0
 REPEATER_ADDRESS = ""
 REPEATER_PORT = 0
+HUE_ADDRESS = ""
+HUE_PORT = 0
+TIMER_ADDRESS = ""
+TIMER_PORT = 0
 
 
 from twisted.internet.protocol import DatagramProtocol # type: ignore
@@ -31,6 +34,7 @@ CACHE_DATA: All_Light_Data = {}
 CACHE_EXPIRY_TIME = 0.0
 NC_DATA_SIZE = 21
 NC_HEADER_SIZE = 2
+NO_TIMER = "notimer "
 
 def get_all_light_data() -> All_Light_Data:
     global CACHE_EXPIRY_TIME, CACHE_DATA, LIGHT_DATA_FILE
@@ -54,32 +58,40 @@ def get_all_light_data() -> All_Light_Data:
         print("get_all_light_data failed: {}".format(e))
         return CACHE_DATA
 
-
-
 class AbstractData:
-    def encode(self) -> bytes:
-        return b""
+    def device_send(self, device: typing.BinaryIO) -> None:
+        pass
+
+    def network_send(self, address: str, port: int) -> None:
+        pass
 
 class NCData(AbstractData):
     def __init__(self, msg: bytes) -> None:
         self.msg = msg
 
-    def encode(self) -> bytes:
+    def device_send(self, device: typing.BinaryIO) -> None:
         print ("broadcast NC message at %s" % (time.asctime()))
-        return self.msg
+        device.write(self.msg[NC_HEADER_SIZE:])
+
+    def network_send(self, address: str, port: int) -> None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.sendto(self.msg, (address, port))
 
 class HEData(AbstractData):
     def __init__(self, number: int) -> None:
         self.number = number
 
-    def encode(self) -> bytes:
+    def device_send(self, device: typing.BinaryIO) -> None:
         print ("broadcast %08x at %s" % (self.number, time.asctime()))
-        return ("%08x\n" % self.number).encode("ascii")
+        device.write("{:08x}\n".format(self.number).encode("ascii"))
 
+    def network_send(self, address: str, port: int) -> None:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.sendto("{}{:08x}".format(NO_TIMER, self.number).encode("ascii"), (address, port))
 
 class Server433(DatagramProtocol):
-    def __init__(self) -> None:
-        print ('startup %s' % DEVICE)
+    def __init__(self, device: typing.BinaryIO) -> None:
+        print ('startup %s' % device.name)
         print ('send interval is %1.2f seconds' % SEND_INTERVAL)
 
         self.last_day = None
@@ -92,14 +104,8 @@ class Server433(DatagramProtocol):
             code = int(light_data["code"], 16)
             self.code_to_name_map[code] = name
 
-        sys.stdout.flush()
-
-
-        try:
-            self.device = open(DEVICE, "wb")
-        except:
-            print('cannot open device')
-            sys.exit(1)
+        print(end="", flush=True)
+        self.device = device
 
     def get_name(self, code: int) -> typing.Tuple[str, bool]:
         on_flag = False
@@ -120,38 +126,62 @@ class Server433(DatagramProtocol):
             code |= 0x10
         return code
         
-    def datagramReceived(self, data_bytes: bytes, host_port: typing.Tuple[str, int]) -> None:
+    def datagramReceived(self, data_bytes: bytes,
+                host_port: typing.Tuple[str, int]) -> None:
         (host, port) = host_port
+
+        data: typing.Optional[AbstractData] = None
+        send_to_timer_service = False
 
         if ((len(data_bytes) == (NC_DATA_SIZE + NC_HEADER_SIZE))
         and data_bytes.startswith(b"NC")):
-            # Code transmitted by txnc433/udp.c
-            self.send(NCData(data_bytes[NC_HEADER_SIZE:]))
+            # New Code transmitted by txnc433/udp.c or home_easy.py
+            data = NCData(data_bytes)
+
         else:
-            # Probably a code for old Home Easy system
+            # Home Easy code. Possibly hex, or possibly a name
             try:
-                data = data_bytes[:32].decode("ascii")
+                data_text = data_bytes[:32].decode("ascii")
             except:
-                data = ""
+                data_text = ""
+
+            send_to_timer_service = True
+            if data_text.startswith(NO_TIMER):
+                data_text = data_text[len(NO_TIMER):]
+                send_to_timer_service = False
+
             try:
-                number = int(data, 16)
+                number = int(data_text, 16)
             except:
                 number = 0
 
-            if not (0 < number < (1 << 32)):
-                self.named_action(data)
-                return
+            if 0 < number < (1 << 28):
+                data = HEData(number)
+            else:
+                data = self.decode_named_action(data_text)
 
-            # Data for broadcast
-            self.send(HEData(number))
-    
-    def send(self, data: AbstractData) -> None:
+        if not data:
+            return
+
+        # Enqueue for device
         self.send_queue.append(data)
         if len(self.send_queue) == 1:
-            t = time.time() + SEND_DELAY
-            self.allow_send_at = max(self.allow_send_at, t)
             self.send_next()
 
+        # Recover the command in text form (if applicable)
+        data_text = self.encode_named_action(data)
+
+        # Copy to Hue service if any
+        if data_text and HUE_ADDRESS and HUE_PORT:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.sendto(data_text.encode("ascii"), (HUE_ADDRESS, HUE_PORT))
+
+        # Copy to timer service if any
+        if (data_text and send_to_timer_service
+        and TIMER_ADDRESS and TIMER_PORT):
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.sendto(data_text.encode("ascii"), (TIMER_ADDRESS, TIMER_PORT))
+    
     def send_next(self) -> None:
         if len(self.send_queue) == 0:
             # nothing to send
@@ -163,9 +193,13 @@ class Server433(DatagramProtocol):
             data = self.send_queue.pop(0)
             self.allow_send_at = t + SEND_INTERVAL
            
-            self.device.write(data.encode())
+            data.device_send(self.device)
             self.device.flush()
-            sys.stdout.flush()
+            print(end="", flush=True)
+
+            # send to repeater if any
+            if REPEATER_ADDRESS and REPEATER_PORT:
+                data.network_send(REPEATER_ADDRESS, REPEATER_PORT)
 
             if len(self.send_queue) == 0:
                 # done sending now
@@ -176,35 +210,44 @@ class Server433(DatagramProtocol):
         # reschedule: more to send, or not ready to send yet
         reactor.callLater(0.05 + max(0, self.allow_send_at - t), self.send_next)
 
-    def named_action(self, text: str) -> None:
+    def decode_named_action(self, text: str) -> typing.Optional[HEData]:
         fields = text.split()
         if len(fields) != 2:
             print ('invalid named action (%u fields)' % len(fields))
-            return
+            return None
         on = (fields[-1] == "on")
         off = (fields[-1] == "off")
         if not (on or off):
             print ('invalid named action (not "on" or "off")')
-            return
+            return None
 
         try:
             c1 = self.get_code(fields[0], on)
         except:
             print ('invalid named action (get_code error)')
-            return
+            return None
         if c1 < 0:
             print ('invalid named action (unknown light)')
-            return
-        try:
-            self.send(HEData(c1))
-        except:
-            print ('invalid named action (send error)')
-            return
-            
+            return None
+
+        return HEData(c1)
+
+    def encode_named_action(self, data: AbstractData) -> str:
+        if isinstance(data, HEData):
+            number = data.number
+            (name, on_flag) = self.get_name(number)
+            if name != "":
+                if on_flag:
+                    return "{} on".format(name)
+                else:
+                    return "{} off".format(name)
+        return ""
+
 def main() -> None:
 
     global PORT, LIGHT_DATA_FILE
     global REPEATER_PORT, REPEATER_ADDRESS
+    global HUE_PORT, HUE_ADDRESS
 
     parser = argparse.ArgumentParser(
         prog="home_easy",
@@ -213,24 +256,36 @@ def main() -> None:
     parser.add_argument("--port", type=int, metavar="N",
         help="UDP port to listen on", default=PORT)
     parser.add_argument("--light-data-file", type=argparse.FileType('r'),
+        metavar="FILE",
         help="JSON file containing name -> number translations "
              "for Home Easy lights, e.g. " + str(LIGHT_DATA_FILE))
-    parser.add_argument("--repeater-address", type=str,
+    parser.add_argument("--repeater-address", type=str, metavar="IP",
         help="IP address of another home_easy transmitter "
              "acting as a repeater")
-    parser.add_argument("--repeater-port", type=int,
+    parser.add_argument("--repeater-port", type=int, metavar="N",
         help="UDP port of another home_easy transmitter "
              "acting as a repeater")
+    parser.add_argument("--hue-address", type=str, metavar="IP",
+        help="IP address of hue_service")
+    parser.add_argument("--hue-port", type=int, metavar="N",
+        help="UDP port of hue_service (e.g. 1990)")
+    parser.add_argument("--timer-address", type=str, metavar="IP",
+        help="IP address of timer_service")
+    parser.add_argument("--timer-port", type=int, metavar="N",
+        help="UDP port of timer_service (e.g. 1987)")
     args = parser.parse_args()
 
     PORT = args.port
+    LIGHT_DATA_FILE = None
+    REPEATER_PORT = args.repeater_port
+    REPEATER_ADDRESS = args.repeater_address
+    HUE_ADDRESS = args.hue_address
+    HUE_PORT = args.hue_port
+    TIMER_ADDRESS = args.timer_address
+    TIMER_PORT = args.timer_port
     if args.light_data_file:
         LIGHT_DATA_FILE = Path(args.light_data_file.name).absolute()
         args.light_data_file.close()
-    else:
-        LIGHT_DATA_FILE = None
-    REPEATER_PORT = args.repeater_port
-    REPEATER_ADDRESS = args.repeater_address
 
     os.chdir(ROOT)
 
@@ -250,12 +305,14 @@ def main() -> None:
         all_light_data = get_all_light_data()
         print ('%u known lights' % len(all_light_data))
 
-        print ("GPIO setup", flush=True)
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setwarnings(False)
+        try:
+            device = open(DEVICE, "wb")
+        except:
+            print('cannot open device')
+            sys.exit(1)
 
         print ("start server", flush=True)
-        reactor.listenUDP(PORT, Server433())
+        reactor.listenUDP(PORT, Server433(device))
         reactor.run()
 
 if __name__ == "__main__":

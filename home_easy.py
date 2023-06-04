@@ -3,20 +3,25 @@
 # Listen on port 433 for UDP packets
 # Write them to the device /dev/tx433.
 
-DEVICE = "/dev/tx433"
+from pathlib import Path
+import typing
+
+DEVICE = Path("/dev/tx433")
 PORT = 433
-ROOT = "/srv/home_easy"
-LIGHT_DATA_URL = "http://192.168.2.11/cgi-bin/lights_json"
+ROOT = Path(__file__).parent
+LIGHT_DATA_FILE: typing.Optional[Path] = Path("/srv/root_services/lights.json")
 SEND_INTERVAL = 2.5
 SEND_DELAY = 1.0
+REPEATER_ADDRESS = ""
+REPEATER_PORT = 0
 
 
 from twisted.internet.protocol import DatagramProtocol # type: ignore
 from twisted.internet import reactor # type: ignore
-import time, os, sys, subprocess, typing, json, socket, shutil, tempfile
+import time, os, sys, subprocess, json, socket, shutil, tempfile
 import RPi.GPIO as GPIO  # type: ignore
 import urllib.request
-from pathlib import Path
+import argparse
 
 Short_Name = str
 Light_Data = typing.Dict[str, str]
@@ -28,18 +33,22 @@ NC_DATA_SIZE = 21
 NC_HEADER_SIZE = 2
 
 def get_all_light_data() -> All_Light_Data:
-    global CACHE_EXPIRY_TIME, CACHE_DATA
+    global CACHE_EXPIRY_TIME, CACHE_DATA, LIGHT_DATA_FILE
     t = time.time()
     if t < CACHE_EXPIRY_TIME:
         return CACHE_DATA
 
+    if not LIGHT_DATA_FILE:
+        CACHE_DATA = dict()
+        CACHE_EXPIRY_TIME = t + (24 * 60 * 60)
+        return CACHE_DATA
+
+    print ("load settings from %s" % LIGHT_DATA_FILE, flush=True)
     CACHE_EXPIRY_TIME = t + 60
     try:
-        req = urllib.request.Request(url=LIGHT_DATA_URL)
-        r = urllib.request.urlopen(req)
-        reply = r.read().decode("utf-8")
-        CACHE_DATA = json.loads(reply)
-        CACHE_EXPIRY_TIME = t + (24 * 60 * 60)
+        with open(LIGHT_DATA_FILE, "rt") as reply:
+            CACHE_DATA = json.load(reply)
+            CACHE_EXPIRY_TIME = t + (24 * 60 * 60)
         return CACHE_DATA
     except Exception as e:
         print("get_all_light_data failed: {}".format(e))
@@ -193,7 +202,36 @@ class Server433(DatagramProtocol):
             return
             
 def main() -> None:
-    sys.stdout = sys.stderr = open("/tmp/home_easy.log", "wt")
+
+    global PORT, LIGHT_DATA_FILE
+    global REPEATER_PORT, REPEATER_ADDRESS
+
+    parser = argparse.ArgumentParser(
+        prog="home_easy",
+        description="Transmitter for Home Easy / New Code messages; "
+                    "intended to be run from systemd")
+    parser.add_argument("--port", type=int, metavar="N",
+        help="UDP port to listen on", default=PORT)
+    parser.add_argument("--light-data-file", type=argparse.FileType('r'),
+        help="JSON file containing name -> number translations "
+             "for Home Easy lights, e.g. " + str(LIGHT_DATA_FILE))
+    parser.add_argument("--repeater-address", type=str,
+        help="IP address of another home_easy transmitter "
+             "acting as a repeater")
+    parser.add_argument("--repeater-port", type=int,
+        help="UDP port of another home_easy transmitter "
+             "acting as a repeater")
+    args = parser.parse_args()
+
+    PORT = args.port
+    if args.light_data_file:
+        LIGHT_DATA_FILE = Path(args.light_data_file.name).absolute()
+        args.light_data_file.close()
+    else:
+        LIGHT_DATA_FILE = None
+    REPEATER_PORT = args.repeater_port
+    REPEATER_ADDRESS = args.repeater_address
+
     os.chdir(ROOT)
 
     print ('Compile driver for TX433', flush=True)
@@ -209,15 +247,14 @@ def main() -> None:
             print('Load failed', flush=True)
             sys.exit(1)
 
-        print ("load settings from %s" % LIGHT_DATA_URL, flush=True)
         all_light_data = get_all_light_data()
         print ('%u known lights' % len(all_light_data))
 
-        print ("GPIO setup")
+        print ("GPIO setup", flush=True)
         GPIO.setmode(GPIO.BOARD)
         GPIO.setwarnings(False)
 
-        print ("start server")
+        print ("start server", flush=True)
         reactor.listenUDP(PORT, Server433())
         reactor.run()
 

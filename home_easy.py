@@ -275,6 +275,10 @@ def main() -> None:
         help="IP address of timer_service")
     parser.add_argument("--timer-port", type=int, metavar="N",
         help="UDP port of timer_service (e.g. 1987)")
+    parser.add_argument("--gpio-pin", type=int, required=True,
+        help="GPIO pin for 433MHz transmitter: "
+            "24 is used with heating2; "
+            "26 is used with pi3")
     args = parser.parse_args()
 
     PORT = args.port
@@ -300,7 +304,8 @@ def main() -> None:
         if 0 != subprocess.call(["/usr/bin/make"], cwd=p):
             print("Compilation failed", flush=True)
             sys.exit(1)
-        if 0 != subprocess.call(["/sbin/insmod", str(p / "tx433.ko")], cwd=p):
+        if 0 != subprocess.call(["/sbin/insmod", str(p / "tx433.ko"),
+                "tx433_pin=" + str(args.gpio_pin)], cwd=p):
             print('Load failed', flush=True)
             sys.exit(1)
 

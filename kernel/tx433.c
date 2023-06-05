@@ -37,7 +37,7 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             9
+#define VERSION             10
 
 #define SYMBOL_SIZE         (5)     // 5 bits per symbol
 
@@ -45,9 +45,10 @@
 #define NC_DATA_SIZE        (31)    // New codes: 31 base-32 symbols
 #define NC_PULSE            (0x100) // Timing for new code
 
-// #define TX_PIN           24      // physical pin 18
-#define TX_PIN              26      // physical pin 37
-
+static int tx433_pin = 0;
+module_param(tx433_pin, int, 0);
+// 24 = physical pin 18 = used with heating2
+// 26 = physical pin 37 = used with pi3
 
 static void __iomem *gpio;
 static uintptr_t gpio1;
@@ -99,16 +100,14 @@ static inline void await(unsigned us)
 
 static inline void send_high_var(unsigned us)
 {
-    GPIO_SET(1 << TX_PIN);
+    GPIO_SET(1 << tx433_pin);
     await(us);
-    GPIO_CLR(1 << TX_PIN);
+    GPIO_CLR(1 << tx433_pin);
 }
 
 static inline void send_high(void)
 {
-    GPIO_SET(1 << TX_PIN);
-    await(220);
-    GPIO_CLR(1 << TX_PIN);
+    send_high_var(220);
 }
 
 static inline void send_zero(void)
@@ -295,6 +294,10 @@ static int __init tx433_init(void)
 
     printk(KERN_ERR DEV_NAME ": tx433_init\n");
     gpio = NULL;
+    if ((tx433_pin <= 0) || (tx433_pin >= 32)) {
+        printk(KERN_ERR DEV_NAME ": must specify valid tx433_pin parameter\n");
+        return -EINVAL;
+    }
     asm volatile("mrc p15, 0, %0, c0, c0, 0" : "=r" (id));
 
     switch (id) {
@@ -316,12 +319,12 @@ static int __init tx433_init(void)
         return -ENXIO;
     }
     gpio1 = (uintptr_t) gpio;
-    printk(KERN_ERR DEV_NAME ": physical %p logical %p version %d\n",
-        (void *) physical, gpio, VERSION);
+    printk(KERN_ERR DEV_NAME ": physical %p logical %p version %d GPIO pin %d\n",
+        (void *) physical, gpio, VERSION, tx433_pin);
     misc_register(&tx433_misc_device);
     local_irq_save(flags);
-    INP_GPIO(TX_PIN);
-    OUT_GPIO(TX_PIN);
+    INP_GPIO(tx433_pin);
+    OUT_GPIO(tx433_pin);
     local_irq_restore(flags);
     return 0;
 }

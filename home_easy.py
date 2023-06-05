@@ -33,7 +33,7 @@ All_Light_Data = typing.Dict[Short_Name, Light_Data]
 
 CACHE_DATA: All_Light_Data = {}
 CACHE_EXPIRY_TIME = 0.0
-NC_DATA_SIZE = 21
+NC_DATA_SIZE = 31
 NC_HEADER_SIZE = 2
 NO_TIMER = "notimer "
 
@@ -162,6 +162,8 @@ class Server433(DatagramProtocol):
                 data = self.decode_named_action(data_text)
 
         if not data:
+            print("Rejected message of size {}".format(
+                len(data_bytes)), flush=True)
             return
 
         # Enqueue for device
@@ -215,21 +217,18 @@ class Server433(DatagramProtocol):
     def decode_named_action(self, text: str) -> typing.Optional[HEData]:
         fields = text.split()
         if len(fields) != 2:
-            print ('invalid named action (%u fields)' % len(fields))
             return None
         on = (fields[-1] == "on")
         off = (fields[-1] == "off")
         if not (on or off):
-            print ('invalid named action (not "on" or "off")')
             return None
 
         try:
             c1 = self.get_code(fields[0], on)
         except:
-            print ('invalid named action (get_code error)')
-            return None
+            c1 = -1
         if c1 < 0:
-            print ('invalid named action (unknown light)')
+            print ('invalid named action (unknown light "{}")'.format(fields[0]))
             return None
 
         return HEData(c1)

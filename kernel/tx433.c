@@ -37,7 +37,7 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             8
+#define VERSION             9
 
 #define SYMBOL_SIZE         (5)     // 5 bits per symbol
 
@@ -97,53 +97,66 @@ static inline void await(unsigned us)
     while(micros() < await_timer) {}
 }
 
-static inline void send_high(unsigned us)
+static inline void send_high_var(unsigned us)
 {
     GPIO_SET(1 << TX_PIN);
     await(us);
     GPIO_CLR(1 << TX_PIN);
 }
 
+static inline void send_high(void)
+{
+    GPIO_SET(1 << TX_PIN);
+    await(220);
+    GPIO_CLR(1 << TX_PIN);
+}
+
+static inline void send_zero(void)
+{
+    send_high();
+    await(1330);
+}
+
+static inline void send_one(void)
+{
+    send_high();
+    await(320);
+}
+
 static unsigned transmit_home_easy_code(unsigned tx_code, unsigned attempts)
 {
     unsigned i, j, start, stop;
-    const unsigned high_time = 220;        //  0x0dc
-    const unsigned start_low_time = 2700;  //  0xa8c  ->  0xb68 for start code
-    const unsigned short_low_time = 320;   //  0x140  ->  0x21c for short code
-    const unsigned long_low_time = 1330;   //  0x532  ->  0x60e for long code
-    const unsigned finish_low_time = 10270;// 0x281e  -> 0x28fa for finish code
 
     do_gettimeofday(&initial);
     await_timer = start = micros();
     for (i = 0; i < attempts; i++) {
-        // Send start code
-        send_high(high_time);
-        await(start_low_time);
+        send_high(); // Start code
+        await(2700);
         j = 32;
         while (j > 0) {
-            j -= 1;
-            if ((tx_code >> (unsigned) j) & 1) {
-                // Send 'one' bit
-                send_high(high_time);
-                await(long_low_time);
-                send_high(high_time);
-                await(short_low_time);
+            unsigned bits;
+            j -= 2;
+            bits = (tx_code >> (unsigned) j) & 3;
+            if (bits == 0) {
+                send_one(); send_zero();
+                send_one(); send_zero();
+            } else if (bits == 1) {
+                send_one(); send_zero();
+                send_zero(); send_one();
+            } else if (bits == 2) {
+                send_zero(); send_one();
+                send_one(); send_zero();
             } else {
-                // Send 'zero' bit
-                send_high(high_time);
-                await(short_low_time);
-                send_high(high_time);
-                await(long_low_time);
+                send_zero(); send_one();
+                send_zero(); send_one();
             }
         }
-        // Send finish code
-        send_high(high_time);
-        await(finish_low_time);
+        send_high(); // End code
+        await(10270); // Gap
     }
     stop = micros();
     return stop - start;
 }
-
 
 static unsigned transmit_new_code(uint8_t *message)
 {
@@ -156,15 +169,15 @@ static unsigned transmit_new_code(uint8_t *message)
     for (i = 0; i < NC_DATA_SIZE; i++) {
         uint8_t symbol = message[i];
         // start symbol: 11010
-        send_high(NC_PULSE * 2);
+        send_high_var(NC_PULSE * 2);
         await(NC_PULSE);
-        send_high(NC_PULSE);
+        send_high_var(NC_PULSE);
         await(NC_PULSE);
         // send symbol
         for (j = 0; j < SYMBOL_SIZE; j++) {
             if (symbol & (1 << (SYMBOL_SIZE - 1))) {
                 // 10
-                send_high(NC_PULSE);
+                send_high_var(NC_PULSE);
                 await(NC_PULSE);
             } else {
                 // 00
@@ -174,7 +187,7 @@ static unsigned transmit_new_code(uint8_t *message)
         }
     }
     // end of final symbol: 10
-    send_high(NC_PULSE);
+    send_high_var(NC_PULSE);
     await(NC_PULSE);
     stop = micros();
     return stop - start;

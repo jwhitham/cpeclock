@@ -11,6 +11,7 @@ PORT = 433
 ROOT = Path(__file__).parent
 LIGHT_DATA_FILE: typing.Optional[Path] = Path("/srv/root_services/lights.json")
 SEND_INTERVAL = 2.5
+REPEATER_DELAY = 0.0
 REPEATER_ADDRESS = ""
 REPEATER_PORT = 0
 HUE_ADDRESS = ""
@@ -199,7 +200,8 @@ class Server433(DatagramProtocol):
 
             # send to repeater if any
             if REPEATER_ADDRESS and REPEATER_PORT:
-                data.network_send(REPEATER_ADDRESS, REPEATER_PORT)
+                reactor.callLater(REPEATER_DELAY,
+                    data.network_send, REPEATER_ADDRESS, REPEATER_PORT)
 
             if len(self.send_queue) == 0:
                 # done sending now

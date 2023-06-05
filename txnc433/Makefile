@@ -1,6 +1,6 @@
 
 
-CFLAGS=-I.. -Wall -g -O2
+CFLAGS=-Wall -g -O2
 CC=gcc
 
 SRCS = libnc.c ../hmac433.c ../hmac.c \

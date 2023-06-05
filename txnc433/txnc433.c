@@ -6,11 +6,67 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 
 
 #include "libnc.h"
 #include "hmac433.h"
 #include "rx433.h"
+
+static int set_time(uint8_t* payload, unsigned trigger)
+{
+    struct tm* tm;
+    struct timeval tv;
+    int i = 20000;
+
+    // We will try to set the clock to a specific time, HH:MM:SS,
+    // but there is latency for sending a new time to the clock,
+    // so we try to account for that by subtracting some latency:
+    // trigger + latency = 1000000 microseconds
+
+    // First we wait until we're at some point within a second which is
+    // less than the trigger point.
+    do {
+        i--;
+        if (i < 0) {
+            fputs("unable to calibrate to specified latency\n", stderr);
+            return 0;
+        }
+        usleep(100);
+        if (gettimeofday(&tv, NULL) != 0) {
+            perror("gettimeofday");
+            return 0;
+        }
+    } while (tv.tv_usec >= trigger);
+
+    // now we can determine HH:MM:SS for the next second
+    tv.tv_sec++;
+    tm = localtime(&tv.tv_sec);
+    if (!tm) {
+        perror("localtime");
+        return 0;
+    }
+    payload[0] = 'T';
+    payload[1] = tm->tm_hour;
+    payload[2] = tm->tm_min;
+    payload[3] = tm->tm_sec;
+
+    // now wait for the trigger point and return when we reach it
+    do {
+        i--;
+        if (i < 0) {
+            fputs("unable to calibrate to specified latency\n", stderr);
+            return 0;
+        }
+        usleep(100);
+        if (gettimeofday(&tv, NULL) != 0) {
+            perror("gettimeofday");
+            return 0;
+        }
+    } while (tv.tv_usec < trigger);
+
+    return 1;
+}
 
 int main(int argc, char** argv)
 {
@@ -58,18 +114,13 @@ int main(int argc, char** argv)
         payload[i] = (uint8_t) strtol(argv[i + 2], NULL, 0);
     }
     if (strcasecmp(cmd, "set_time") == 0) {
-        struct tm tm;
-        time_t t;
-
-        t = time(NULL);
-        if (localtime_r(&t, &tm) != 0) {
-            perror("localtime");
+        int latency = 100000;
+        if (argc >= 4) {
+            latency = strtol(argv[3], NULL, 0);
+        }
+        if (!set_time(payload, 1000000 - latency)) {
             return 1;
         }
-        payload[0] = 'T';
-        payload[1] = tm.tm_hour;
-        payload[2] = tm.tm_min;
-        payload[3] = tm.tm_sec;
         size = 4;
     } else if (strcasecmp(cmd, "set_alarm") == 0) {
         payload[0] = 'A';
@@ -79,7 +130,7 @@ int main(int argc, char** argv)
         size = 1;
     } else if (strcasecmp(cmd, "message") == 0) {
         payload[0] = 'M';
-        for (i = 1; i < size; i++) {
+        for (i = 1; i < PACKET_PAYLOAD_SIZE; i++) {
             payload[i] = argv[3][i - 1];
             if (payload[i] == '\0') {
                 break;

@@ -249,6 +249,7 @@ def main() -> None:
     global PORT, LIGHT_DATA_FILE
     global REPEATER_PORT, REPEATER_ADDRESS
     global HUE_PORT, HUE_ADDRESS
+    global TIMER_PORT, TIMER_ADDRESS
 
     parser = argparse.ArgumentParser(
         prog="home_easy",

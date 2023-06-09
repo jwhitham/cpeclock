@@ -84,13 +84,13 @@ static void new_packet(const uint8_t* payload, int rs_rc)
         case 'M':
             // message for the screen
             memcpy(tmp, &payload[1], PACKET_PAYLOAD_SIZE - 1);
-            tmp[PACKET_PAYLOAD_SIZE] = '\0';
+            tmp[PACKET_PAYLOAD_SIZE - 1] = '\0';
             display_message(tmp);
             break;
         case 'C':
             // show counter
-            snprintf(tmp, sizeof(tmp), "C %06x E %d",
-                    (unsigned) (hmac_message_counter & 0xffffff),
+            snprintf(tmp, sizeof(tmp), "%08x %d",
+                    (unsigned) hmac_message_counter,
                     rs_rc);
             display_message(tmp);
             break;
@@ -148,7 +148,7 @@ void mail_receive_messages(void)
     // Reed Solomon decoding
     rs_rc = ncrs_decode((uint8_t*) &packet, copy_new_code);
     if (rs_rc <= 0) {
-        display_message("RS ERROR");
+        // display_message("RS ERROR");
         return;
     }
 

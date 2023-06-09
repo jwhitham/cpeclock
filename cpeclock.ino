@@ -217,6 +217,7 @@ void clock_set(uint8_t hour, uint8_t minute, uint8_t second)
         new_time = new_time + ONE_DAY;
     }
     rtc.adjust(new_time);
+    now_time = new_time;
     display_message("SET CLOCK");
 }
 

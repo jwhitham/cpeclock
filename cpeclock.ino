@@ -59,11 +59,6 @@ static uint32_t last_running_time = 0;
 static uint32_t sound_trigger = 0;
 static uint32_t strobe_trigger = 0;
 
-void set_int_pin(char value)
-{
-    digitalWrite(INT_PIN, value ? HIGH : LOW);
-}
-
 void setup()
 {
     CircuitPlayground.begin();
@@ -221,13 +216,29 @@ void clock_set(uint8_t hour, uint8_t minute, uint8_t second)
     display_message("SET CLOCK");
 }
 
+static bool try_subtract_strobe_trigger(uint32_t how_often)
+{
+    if (strobe_trigger >= how_often) {
+        strobe_trigger -= how_often;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 static void update_alarm(void)
 {
-    // No action if the alarm is disabled 
+    // No action if the alarm is disabled, except for switching off NeoPixels
+    // and the speaker
     if (!alarm_active) {
-        CircuitPlayground.strip.setBrightness(0);
-        CircuitPlayground.strip.show();
+        if (0 != CircuitPlayground.strip.getBrightness()) {
+            CircuitPlayground.strip.setBrightness(0);
+            digitalWrite(INT_PIN, HIGH);
+            CircuitPlayground.strip.show();
+            digitalWrite(INT_PIN, LOW);
+        }
         CircuitPlayground.speaker.enable(false);
+        strobe_trigger = sound_trigger = 0;
         return;
     }
 
@@ -245,6 +256,7 @@ static void update_alarm(void)
     uint32_t phase = running_time / TOTAL_PHASE_TIME;
     uint32_t phase_time = running_time % TOTAL_PHASE_TIME;
     uint32_t pulse_time = phase_time % TOTAL_PULSE_TIME;
+    uint32_t brightness = CircuitPlayground.strip.getBrightness();
 
     strobe_trigger += millisecond_delta;
     sound_trigger += millisecond_delta;
@@ -253,71 +265,79 @@ static void update_alarm(void)
     switch ((phase <= 4) ? phase : (((phase - 1) % 4) + 1)) {
         case 0:
             // gradual fade in
-            CircuitPlayground.strip.setBrightness((phase_time * 255) / TOTAL_PHASE_TIME);
+            if (try_subtract_strobe_trigger(250)) {
+                brightness = ((phase_time * 255) / TOTAL_PHASE_TIME);
+            }
             break;
         case 1:
             // pulsing
-            if (pulse_time < (TOTAL_PULSE_TIME / 2)) {
-                CircuitPlayground.strip.setBrightness(255 - ((pulse_time * 255) / (TOTAL_PULSE_TIME / 2)));
-            } else {
-                CircuitPlayground.strip.setBrightness(((pulse_time - (TOTAL_PULSE_TIME / 2)) * 255) / (TOTAL_PULSE_TIME / 2));
+            if (try_subtract_strobe_trigger(250)) {
+                if (pulse_time < (TOTAL_PULSE_TIME / 2)) {
+                    brightness = (255 - ((pulse_time * 255) / (TOTAL_PULSE_TIME / 2)));
+                } else {
+                    brightness = (((pulse_time - (TOTAL_PULSE_TIME / 2)) * 255) / (TOTAL_PULSE_TIME / 2));
+                }
             }
-            strobe_trigger = 0;
             break;
         case 2:
             // strobing, once every two seconds
-            if (strobe_trigger >= 2000) {
-                CircuitPlayground.strip.setBrightness(255);
-                strobe_trigger = 0;
+            if (try_subtract_strobe_trigger(2000)) {
+                brightness = (255);
             } else {
-                CircuitPlayground.strip.setBrightness(0);
+                brightness = (0);
             }
             break;
         case 3:
             // strobing, twice a second
-            if (strobe_trigger >= 500) {
-                CircuitPlayground.strip.setBrightness(255);
-                strobe_trigger = 0;
+            if (try_subtract_strobe_trigger(500)) {
+                brightness = (255);
             } else {
-                CircuitPlayground.strip.setBrightness(0);
+                brightness = (0);
             }
             break;
         default:
             // strobing, four times a second
-            if (strobe_trigger >= 250) {
-                CircuitPlayground.strip.setBrightness(255);
-                strobe_trigger = 0;
+            if (try_subtract_strobe_trigger(250)) {
+                brightness = (255);
             } else {
-                CircuitPlayground.strip.setBrightness(0);
+                brightness = (0);
             }
             break;
     }
 
-    // Lighting colour effects
-    if (phase <= 4) {
-        // yellow
-        for (i = 0; i < NUM_LEDS; i++) {
-            CircuitPlayground.strip.setPixelColor(i, 255, 255, 0);
-        }
-    } else if (phase <= 8) {
-        // white
-        for (i = 0; i < NUM_LEDS; i++) {
-            CircuitPlayground.strip.setPixelColor(i, 255, 255, 255);
-        }
-    } else {
-        if (pulse_time < (TOTAL_PULSE_TIME / 2)) {
+    if (brightness != CircuitPlayground.strip.getBrightness()) {
+        // Update required - this will involve disabling interrupts
+        // while writing to the NeoPixels, so it will disrupt receiving messages
+        CircuitPlayground.strip.setBrightness(brightness);
+
+        // Lighting colour effects
+        if (phase <= 4) {
+            // yellow
+            for (i = 0; i < NUM_LEDS; i++) {
+                CircuitPlayground.strip.setPixelColor(i, 255, 255, 0);
+            }
+        } else if (phase <= 8) {
             // white
             for (i = 0; i < NUM_LEDS; i++) {
                 CircuitPlayground.strip.setPixelColor(i, 255, 255, 255);
             }
         } else {
-            // red
-            for (i = 0; i < NUM_LEDS; i++) {
-                CircuitPlayground.strip.setPixelColor(i, 255, 0, 0);
+            if (pulse_time < (TOTAL_PULSE_TIME / 2)) {
+                // white
+                for (i = 0; i < NUM_LEDS; i++) {
+                    CircuitPlayground.strip.setPixelColor(i, 255, 255, 255);
+                }
+            } else {
+                // red
+                for (i = 0; i < NUM_LEDS; i++) {
+                    CircuitPlayground.strip.setPixelColor(i, 255, 0, 0);
+                }
             }
         }
+        digitalWrite(INT_PIN, HIGH);
+        CircuitPlayground.strip.show();
+        digitalWrite(INT_PIN, LOW);
     }
-    CircuitPlayground.strip.show();
 
     // Sound effects
     uint32_t how_often = 0;
@@ -359,7 +379,7 @@ static void update_alarm(void)
     }
     if ((sound_trigger >= how_often) && (how_often > 0)) {
         CircuitPlayground.playTone(440, 20);
-        sound_trigger = 0;
+        sound_trigger -= how_often;
     }
 }
 
@@ -375,11 +395,9 @@ void loop()
         }
         // Check for the alarm
         alarm_active = alarm_update(now_time.hour(), now_time.minute());
-        if (alarm_active) {
-            update_alarm();
-        }
+        update_alarm();
         update_display();
-    } else if (alarm_active > 0) {
+    } else {
         // Update the alarm frequently when active
         update_alarm();
     }

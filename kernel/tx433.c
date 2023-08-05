@@ -37,7 +37,7 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             10
+#define VERSION             11
 
 #define SYMBOL_SIZE         (5)     // 5 bits per symbol
 

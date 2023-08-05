@@ -28,7 +28,7 @@
 #include <linux/poll.h>
 #include <linux/cdev.h>
 #include <linux/version.h>
-#include <linux/time.h>
+#include <linux/timekeeping.h>
 
 #include <asm/io.h>
 #include <asm/delay.h>
@@ -81,21 +81,12 @@ static inline void GPIO_CLR(unsigned g)
     iowrite32(g, (void *) (gpio1 + (4 * 10)));
 }
 
-static unsigned await_timer = 0;
-static struct timeval initial;
-
-static inline unsigned micros(void)
-{
-    struct timeval t;
-    do_gettimeofday(&t);
-    t.tv_sec -= initial.tv_sec;
-    return ((unsigned) t.tv_sec * (unsigned) 1000000) + t.tv_usec;
-}
+static u64 await_timer = 0;
 
 static inline void await(unsigned us)
 {
-    await_timer += us;
-    while(micros() < await_timer) {}
+    await_timer += us * 1000;
+    while(ktime_get_ns() < await_timer) {}
 }
 
 static inline void send_high_var(unsigned us)
@@ -122,12 +113,12 @@ static inline void send_one(void)
     await(320);
 }
 
-static unsigned transmit_home_easy_code(unsigned tx_code, unsigned attempts)
+static u64 transmit_home_easy_code(unsigned tx_code, unsigned attempts)
 {
-    unsigned i, j, start, stop;
+    unsigned i, j;
+    u64 start, stop;
 
-    do_gettimeofday(&initial);
-    await_timer = start = micros();
+    await_timer = start = ktime_get_ns();
     for (i = 0; i < attempts; i++) {
         send_high(); // Start code
         await(2700);
@@ -153,17 +144,16 @@ static unsigned transmit_home_easy_code(unsigned tx_code, unsigned attempts)
         send_high(); // End code
         await(10270); // Gap
     }
-    stop = micros();
+    stop = ktime_get_ns();
     return stop - start;
 }
 
-static unsigned transmit_new_code(uint8_t *message)
+static u64 transmit_new_code(uint8_t *message)
 {
     size_t i, j;
-    unsigned start, stop;
+    u64 start, stop;
 
-    do_gettimeofday(&initial);
-    await_timer = start = micros();
+    await_timer = start = ktime_get_ns();
 
     for (i = 0; i < NC_DATA_SIZE; i++) {
         uint8_t symbol = message[i];
@@ -188,7 +178,7 @@ static unsigned transmit_new_code(uint8_t *message)
     // end of final symbol: 10
     send_high_var(NC_PULSE);
     await(NC_PULSE);
-    stop = micros();
+    stop = ktime_get_ns();
     return stop - start;
 }
 
@@ -207,7 +197,7 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
 {
     char user_data[NC_DATA_SIZE];
     unsigned long flags;
-    unsigned timing = 0;
+    u64 timing = 0;
 
     // The code provided to /dev/tx433 should be an even
     // number of hexadecimal digits ending in '\n'
@@ -243,7 +233,7 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
         local_irq_save(flags);
         timing = transmit_home_easy_code(code, 10);
         local_irq_restore(flags);
-        printk(KERN_ERR DEV_NAME ": send %08x took %u\n", code, timing);
+        printk(KERN_ERR DEV_NAME ": send %08x took %llu\n", code, timing);
 
     } else if (count == NC_DATA_SIZE) {
         // Long codes use the new protocol - 31 symbols of 5 bits each
@@ -258,7 +248,7 @@ static ssize_t tx433_write(struct file *file, const char __user *buf,
         local_irq_save(flags);
         timing = transmit_new_code((uint8_t *) user_data);
         local_irq_restore(flags);
-        printk(KERN_ERR DEV_NAME ": send new code took %u\n", timing);
+        printk(KERN_ERR DEV_NAME ": send new code took %llu\n", timing);
     } else {
         return -EINVAL;
     }
@@ -313,9 +303,9 @@ static int __init tx433_init(void)
             printk(KERN_ERR DEV_NAME ": unknown CPU ID 0x%08x, refusing to load tx433\n", id);
             return -ENXIO;
     }
-    gpio = ioremap_nocache(physical, BLOCK_SIZE);
+    gpio = ioremap(physical, BLOCK_SIZE);
     if (gpio == NULL) {
-        printk(KERN_ERR DEV_NAME ": ioremap_nocache failed (physical %p)\n", (void *) physical);
+        printk(KERN_ERR DEV_NAME ": ioremap failed (physical %p)\n", (void *) physical);
         return -ENXIO;
     }
     gpio1 = (uintptr_t) gpio;

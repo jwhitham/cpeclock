@@ -13,6 +13,7 @@
 #include "mail.h"
 #include "hal.h"
 #include "ncrs.h"
+#include "night_day_time.h"
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -58,6 +59,7 @@ static uint32_t millisecond_offset = 0;
 static uint32_t last_running_time = 0;
 static uint32_t sound_trigger = 0;
 static uint32_t strobe_trigger = 0;
+static uint16_t extension_button_pressed = 0;
 
 void setup()
 {
@@ -133,6 +135,7 @@ void setup()
     }
 
     alarm_init();
+    night_day_time_init();
 
     attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
@@ -202,6 +205,19 @@ void display_message(const char* msg)
     screen_off_time = now_time + SCREEN_ON_TIME;
     message_off_time = now_time + MESSAGE_ON_TIME;
     update_display();
+}
+
+static int is_night_time()
+{
+    return night_day_time_test(now_time.hour(), now_time.minute());
+}
+
+void display_message_lp(const char* msg)
+{
+    // Low priority display message - only takes effect in the day time
+    if (!is_night_time()) {
+        display_message(msg);
+    }
 }
 
 void clock_set(uint8_t hour, uint8_t minute, uint8_t second)
@@ -393,6 +409,10 @@ void loop()
         if (now_time.second() == 0) {
             millisecond_offset = millis();
         }
+        // In the day time, the display should be on
+        if (!is_night_time()) {
+            screen_off_time = now_time + SCREEN_ON_TIME;
+        }
         // Check for the alarm
         alarm_active = alarm_update(now_time.hour(), now_time.minute());
         update_alarm();
@@ -405,18 +425,36 @@ void loop()
     // These tasks run every time loop() is called
     mail_receive_messages();
 
+    bool rightButton = CircuitPlayground.rightButton();
+    bool leftButton = CircuitPlayground.leftButton();
+
     if (!digitalRead(EXT_BUTTON_PIN)) {
-        // extension button
+        // extension button - multiple functions
         screen_off_time = now_time + SCREEN_ON_TIME;
+        extension_button_pressed ++;
+        switch (extension_button_pressed) {
+            case 100:
+                // cancel / disable alarm
+                leftButton = true;
+                break;
+            case 300:
+                // reset alarm
+                // cycle repeats
+                rightButton = true;
+                extension_button_pressed = 0;
+                break;
+        }
+    } else {
+        extension_button_pressed = 0;
     }
-    if (CircuitPlayground.rightButton()) {
+    if (rightButton) {
         // right button
         if (alarm_reset()) {
             alarm_active = alarm_update(now_time.hour(), now_time.minute());
             update_alarm();
         }
     }
-    if (CircuitPlayground.leftButton()) {
+    if (leftButton) {
         // left button - cancel / disable alarm
         if (alarm_unset()) {
             alarm_active = alarm_update(now_time.hour(), now_time.minute());

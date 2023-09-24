@@ -13,6 +13,10 @@
 #define NVRAM_ALARM_HI          0x13
 #define NVRAM_ALARM_LO          0x14
 #define NVRAM_ALARM_STATE       0x15
+#define NVRAM_NIGHT_TIME_HI     0x16
+#define NVRAM_NIGHT_TIME_LO     0x17
+#define NVRAM_DAY_TIME_HI       0x18
+#define NVRAM_DAY_TIME_LO       0x19
 
 #endif
 

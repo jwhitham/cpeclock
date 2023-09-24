@@ -10,6 +10,7 @@
 #include "ncrs.h"
 #include "nvram.h"
 #include "alarm.h"
+#include "night_day_time.h"
 
 #include "secret.h"
 
@@ -73,7 +74,7 @@ static void new_home_easy_message(uint32_t msg)
 {
     char tmp[16];
     snprintf(tmp, sizeof(tmp), "HE %08x", (unsigned) msg);
-    display_message(tmp);
+    display_message_lp(tmp);
 }
 
 static void new_packet(const uint8_t* payload, int rs_rc)
@@ -101,6 +102,10 @@ static void new_packet(const uint8_t* payload, int rs_rc)
         case 'A':
             // set alarm
             alarm_set(payload[1], payload[2]);
+            break;
+        case 'N':
+            // set night and day time 
+            night_day_time_set(payload[1], payload[2], payload[3], payload[4]);
             break;
         case 'a':
             // unset alarm, and cancel if it's active
@@ -162,7 +167,7 @@ void mail_receive_messages(void)
     if (!hmac433_authenticate(
                 SECRET_DATA, SECRET_SIZE,
                 &packet, &hmac_message_counter)) {
-        display_message("HMAC ERROR");
+        display_message_lp("HMAC ERROR");
         return;
     }
 

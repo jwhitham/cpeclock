@@ -96,6 +96,8 @@ int main(int argc, char** argv)
             "  set_alarm <h> <m> = set the alarm to <h>:<m> (decimals)\n"
             "  unset_alarm = cancel alarm\n"
             "  message <M> = send tiny message <M>\n"
+            "  set_day_night_time <hn> <mn> <hd> <md> = set the start time \n"
+            "    for night as <hn>:<mn> and day as <hd>:<md>\n"
             "  counter = show counter\n"
             "  or: 1..6 bytes, separated by spaces, each written\n"
             "      as a decimal or as a hex value prefixed by 0x\n");
@@ -128,6 +130,9 @@ int main(int argc, char** argv)
     } else if (strcasecmp(cmd, "unset_alarm") == 0) {
         payload[0] = 'a';
         size = 1;
+    } else if (strcasecmp(cmd, "set_day_night_time") == 0) {
+        payload[0] = 'N';
+        size = 5;
     } else if (strcasecmp(cmd, "message") == 0) {
         payload[0] = 'M';
         for (i = 1; i < PACKET_PAYLOAD_SIZE; i++) {

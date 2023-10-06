@@ -15,6 +15,8 @@ extern "C" {
 extern volatile uint32_t rx433_home_easy;
 extern volatile uint8_t rx433_new_code[NC_DATA_SIZE];
 extern volatile uint8_t rx433_new_code_ready;
+extern volatile uint32_t rx433_new_code_start_time_ms;
+extern uint32_t rx433_new_code_symbol_time_ms;
 
 
 void rx433_interrupt(void);

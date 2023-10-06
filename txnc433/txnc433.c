@@ -99,6 +99,7 @@ int main(int argc, char** argv)
             "  set_day_night_time <hn> <mn> <hd> <md> = set the start time \n"
             "    for night as <hn>:<mn> and day as <hd>:<md>\n"
             "  counter = show counter\n"
+            "  latency = show message latency\n"
             "  or: 1..6 bytes, separated by spaces, each written\n"
             "      as a decimal or as a hex value prefixed by 0x\n");
         return 1;
@@ -142,6 +143,9 @@ int main(int argc, char** argv)
             }
         }
         size = i;
+    } else if (strcasecmp(cmd, "latency") == 0) {
+        payload[0] = 'L';
+        size = 1;
     } else if (strcasecmp(cmd, "counter") == 0) {
         payload[0] = 'C';
         size = 1;

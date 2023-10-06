@@ -14,6 +14,11 @@ uint32_t micros()
     return test_time;
 }
 
+uint32_t millis()
+{
+    return 0; // not relevant to test
+}
+
 static int matches_test_code(const uint8_t* expect)
 {
     return memcmp(expect, (const uint8_t*) rx433_new_code, NC_DATA_SIZE) == 0;

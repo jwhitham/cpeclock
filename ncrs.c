@@ -30,7 +30,7 @@ int ncrs_init(void)
     return 1;
 }
 
-int ncrs_decode(uint8_t *original_message, const uint8_t *encoded_message)
+int ncrs_decode(uint8_t *original_message, const uint8_t *encoded_message, int8_t *shifted_by)
 {
     uint8_t padded_message[(MAX_SHIFT_DISTANCE * 2) + NC_DATA_SIZE];
     uint8_t data[MSG_SYMBOLS];
@@ -49,6 +49,7 @@ int ncrs_decode(uint8_t *original_message, const uint8_t *encoded_message)
         } else {
             i = MAX_SHIFT_DISTANCE - (shift_attempt / 2); // Shifting right (losing symbols from end)
         }
+        *shifted_by = i;
 
         // Copy interleaved data and parity, applying shift
         for (j = 0; j < (NROOTS * 2); i += 3, j += 2) {

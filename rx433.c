@@ -11,6 +11,31 @@
 #define NC_SYMBOL_TIME      ((NC_PULSE * 5) + (NC_PULSE * 2 * SYMBOL_SIZE))
 #define MAX_INCOMPLETE_SKIP (5) // maximum symbols that can be skipped at the end of a message
 
+// New codes consist of 31 (NC_DATA_SIZE) symbols of 5 bits.
+// Over the air, each symbol begins with 11010
+// then five bits, sent as either 10 (if 1) or 00 (if 0), MSB first
+// then either the next symbol, or an end symbol, 10.
+//
+// So, for example, the symbol data 10101 would be sent as:
+//   110101000100010
+//   ^^^^^ start
+//        ^^ MSB
+//                ^^ LSB
+// and this would be followed immediately by another symbol or 10.
+//
+// The length of each transmitted 1 or 0 is NC_PULSE i.e. 256 microseconds
+// so 11 means "transmitter on" for 512 microseconds
+// and 10 means "transmitter on" for 256 microseconds and then "transmitter off" for 256 microseconds.
+// 
+// This may be easier to understand if you look at kernel/tx433.c, particularly transmit_new_code,
+// send_high_var and await. 
+//
+// The interrupt handler only recognises the 0 -> 1 transition.
+// The first few symbols might not be received, in which case the Reed Solomon code
+// is supposed to be able to recover the missing data.
+
+
+uint32_t rx433_new_code_symbol_time_ms = NC_SYMBOL_TIME / 1000;
 static uint32_t old_time = 0;
 
 // Home Easy decoder state
@@ -24,8 +49,10 @@ volatile uint32_t rx433_home_easy = 0;
 // New code decoder state
 static uint8_t nc_buffer[NC_DATA_SIZE] = {0};
 static uint32_t nc_timebase = 0;
+static uint32_t nc_time_at_start_ms = 0;
 static uint32_t nc_count = ~0; 
 volatile uint8_t rx433_new_code[NC_DATA_SIZE] = {0};
+volatile uint32_t rx433_new_code_start_time_ms = 0;
 volatile uint8_t rx433_new_code_ready = 0;
 
 #define IS_CLOSE(delta, centre, epsilon) \
@@ -126,10 +153,12 @@ void rx433_interrupt(void)
             if ((nc_count == NC_DATA_SIZE) && (skip <= MAX_INCOMPLETE_SKIP)) {
                 // Force end of previous incomplete message
                 memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
+                rx433_new_code_start_time_ms = nc_time_at_start_ms;
                 rx433_new_code_ready = 1;
             }
             nc_count = 0;
             nc_timebase = new_time;
+            nc_time_at_start_ms = millis() - ((NC_PULSE * 5) / 1000);
             memset(nc_buffer, 0, NC_DATA_SIZE);
         } else if (IS_CLOSE(delta2, NC_SYMBOL_TIME, EPSILON)) {
             // Message continues
@@ -157,6 +186,7 @@ void rx433_interrupt(void)
                     if (nc_count == NC_DATA_SIZE) {
                         // Also, end of message
                         memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
+                        rx433_new_code_start_time_ms = nc_time_at_start_ms;
                         rx433_new_code_ready = 1;
                         nc_count = ~0;
                     }
@@ -166,6 +196,7 @@ void rx433_interrupt(void)
             if ((nc_count + MAX_INCOMPLETE_SKIP) >= NC_DATA_SIZE) {
                 // Force end of incomplete message (as the number of skipped words <= MAX_INCOMPLETE_SKIP)
                 memcpy((uint8_t*)rx433_new_code, nc_buffer, NC_DATA_SIZE);
+                rx433_new_code_start_time_ms = nc_time_at_start_ms;
                 rx433_new_code_ready = 1;
             }
             nc_count = ~0;

@@ -61,7 +61,6 @@ int main(void)
     uint8_t message[DECODED_DATA_BYTES];
     uint8_t transmit[NC_DATA_SIZE];
     uint8_t recovered[DECODED_DATA_BYTES];
-    int8_t shifted = 0;
     unsigned sometimes_fails_bad = 0;
     unsigned sometimes_fails_good = 0;
     unsigned almost_always_fails_bad = 0;
@@ -204,7 +203,7 @@ int main(void)
 
 
         // Decoded
-        ok = ncrs_decode(recovered, transmit, &shifted);
+        ok = ncrs_decode(recovered, transmit);
         switch (expect) {
             case NEVER_FAILS:
                 if (ok <= 0) {

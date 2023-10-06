@@ -119,9 +119,8 @@ int libnc_encode(const uint8_t* payload, size_t payload_size,
     {
         hmac433_packet_t    packet2;
         uint64_t            counter2 = secret_file.counter - 1;
-        int8_t              shifted = 0;
 
-        ncrs_decode((uint8_t *) &packet2, message, &shifted);
+        ncrs_decode((uint8_t *) &packet2, message);
         if (memcmp(&packet2, &packet, sizeof(packet)) != 0) {
             return 0;
         }

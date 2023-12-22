@@ -37,7 +37,7 @@
 #include <linux/types.h>
 
 #define DEV_NAME            "tx433"
-#define VERSION             11
+#define VERSION             12
 
 #define SYMBOL_SIZE         (5)     // 5 bits per symbol
 
@@ -288,7 +288,11 @@ static int __init tx433_init(void)
         printk(KERN_ERR DEV_NAME ": must specify valid tx433_pin parameter\n");
         return -EINVAL;
     }
+#ifdef __arm__
     asm volatile("mrc p15, 0, %0, c0, c0, 0" : "=r" (id));
+#elif __aarch64__
+    asm volatile("mrs %0, MIDR_EL1" : "=r" (id));
+#endif
 
     switch (id) {
         case 0x410fb767:    /* Pi1 */
@@ -298,6 +302,10 @@ static int __init tx433_init(void)
         case 0x410fc075:    /* Pi2 */
             physical = (0x3f200000); /* GPIO controller for RPi2 ARMv7 */
             break;
+        case 0:
+            /* Not __arm__ or __aarch64__ ? Not RPi! */
+            printk(KERN_ERR DEV_NAME ": non-ARM CPU, refusing to load tx433\n");
+            return -ENXIO;
         default:
             /* Don't know the physical address */
             printk(KERN_ERR DEV_NAME ": unknown CPU ID 0x%08x, refusing to load tx433\n", id);

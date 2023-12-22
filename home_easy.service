@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the Home Easy 433MHz server
+After=rc-local.service
+
+[Service]
+Type=simple
+PIDFile=/run/home_easy.pid
+ExecStart=/usr/bin/python /srv/home_easy/home_easy.py --port 1986 --gpio-pin 26
+User=root
+Group=root
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+

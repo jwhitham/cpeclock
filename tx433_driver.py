@@ -43,7 +43,8 @@ class TX433_Driver:
                     self.__send_one()
                     self.__send_zero()
 
-        self.__send_high(10270) # End code and gap
+            self.__send_high(10270) # End code and gap
+
         self.__pi.wave_add_generic(self.__pulses)
         wave_id = self.__pi.wave_create()
         self.__pi.wave_send_once(wave_id)

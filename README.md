@@ -39,8 +39,8 @@ The length of each transmitted 1 or 0 is NC\_PULSE i.e. 256 microseconds so
 * 11 means "transmitter on" for 512 microseconds, and
 * 10 means "transmitter on" for 256 microseconds and then "transmitter off" for 256 microseconds.
  
-This may be easier to understand if you look at kernel/tx433.c, particularly transmit\_new\_code,
-send\_high\_var and await.
+This may be easier to understand if you look at tx433\_driver.py,
+particularly write\_nc, \_\_send\_high\_var and \_\_await.
 
 The decoder is in rx433.c.
 The interrupt handler is triggered by each 0 -> 1 transition. The intention of the start

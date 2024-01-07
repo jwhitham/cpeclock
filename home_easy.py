@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 # This is the server software
 # Listen on port 433 for UDP packets
-# Write them to the device /dev/tx433.
+# Write them to the GPIO device
 
 from pathlib import Path
 import typing
+import pigpio
+import tx433_driver
 
-DEVICE = Path("/dev/tx433")
 PORT = 433
 ROOT = Path(__file__).parent
 LIGHT_DATA_FILE: typing.Optional[Path] = Path("/srv/root_services/lights.json")
@@ -60,7 +61,7 @@ def get_all_light_data() -> All_Light_Data:
         return CACHE_DATA
 
 class AbstractData:
-    def device_send(self, device: typing.BinaryIO) -> None:
+    def device_send(self, driver: tx433_driver.TX433_Driver) -> None:
         pass
 
     def network_send(self, address: str, port: int) -> None:
@@ -70,9 +71,9 @@ class NCData(AbstractData):
     def __init__(self, msg: bytes) -> None:
         self.msg = msg
 
-    def device_send(self, device: typing.BinaryIO) -> None:
+    def device_send(self, driver: tx433_driver.TX433_Driver) -> None:
         print ("broadcast NC message at %s" % (time.asctime()))
-        device.write(self.msg[NC_HEADER_SIZE:])
+        driver.write_nc(self.msg[NC_HEADER_SIZE:])
 
     def network_send(self, address: str, port: int) -> None:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -82,17 +83,17 @@ class HEData(AbstractData):
     def __init__(self, number: int) -> None:
         self.number = number
 
-    def device_send(self, device: typing.BinaryIO) -> None:
+    def device_send(self, driver: tx433_driver.TX433_Driver) -> None:
         print ("broadcast %08x at %s" % (self.number, time.asctime()))
-        device.write("{:08x}\n".format(self.number).encode("ascii"))
+        driver.write_he(self.number)
 
     def network_send(self, address: str, port: int) -> None:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.sendto("{}{:08x}".format(NO_TIMER, self.number).encode("ascii"), (address, port))
 
 class Server433(DatagramProtocol):
-    def __init__(self, device: typing.BinaryIO) -> None:
-        print ('startup %s' % device.name)
+    def __init__(self, driver: tx433_driver.TX433_Driver) -> None:
+        print ('startup')
         print ('send interval is %1.2f seconds' % SEND_INTERVAL)
 
         self.last_day = None
@@ -106,7 +107,7 @@ class Server433(DatagramProtocol):
             self.code_to_name_map[code] = name
 
         print(end="", flush=True)
-        self.device = device
+        self.driver = driver
 
     def get_name(self, code: int) -> typing.Tuple[str, bool]:
         on_flag = False
@@ -196,8 +197,7 @@ class Server433(DatagramProtocol):
             data = self.send_queue.pop(0)
             self.allow_send_at = t + SEND_INTERVAL
            
-            data.device_send(self.device)
-            self.device.flush()
+            data.device_send(self.driver)
             print(end="", flush=True)
 
             # send to repeater if any
@@ -295,32 +295,19 @@ def main() -> None:
 
     os.chdir(ROOT)
 
-    print ('Compile driver for TX433', flush=True)
-    with tempfile.TemporaryDirectory() as td:
-        p = Path(td) / "tx433"
-        subprocess.call(["/sbin/rmmod", "tx433"], stderr=subprocess.DEVNULL)
-        shutil.copytree(Path(ROOT) / "kernel", p)
-        os.environ["PWD"] = str(p)
-        if 0 != subprocess.call(["/usr/bin/make"], cwd=p):
-            print("Compilation failed", flush=True)
-            sys.exit(1)
-        if 0 != subprocess.call(["/sbin/insmod", str(p / "tx433.ko"),
-                "tx433_pin=" + str(args.gpio_pin)], cwd=p):
-            print('Load failed', flush=True)
-            sys.exit(1)
+    all_light_data = get_all_light_data()
+    print ('%u known lights' % len(all_light_data))
 
-        all_light_data = get_all_light_data()
-        print ('%u known lights' % len(all_light_data))
+    pi = pigpio.pi()
+    if not pi.connected:
+        print('cannot open pigpio connection')
+        sys.exit(1)
 
-        try:
-            device = open(DEVICE, "wb")
-        except:
-            print('cannot open device')
-            sys.exit(1)
+    driver = tx433_driver.TX433_Driver(pi, args.gpio_pin)
 
-        print ("start server", flush=True)
-        reactor.listenUDP(PORT, Server433(device))
-        reactor.run()
+    print ("start server", flush=True)
+    reactor.listenUDP(PORT, Server433(driver))
+    reactor.run()
 
 if __name__ == "__main__":
     main()

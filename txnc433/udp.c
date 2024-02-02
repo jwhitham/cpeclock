@@ -44,6 +44,7 @@ int udp_message(const uint8_t* payload, size_t payload_size)
 
     if (!libnc_encode(payload, payload_size,
                       &message[NC_HEADER_SIZE], NC_DATA_SIZE)) {
+        fputs("Unable to encode message\n", stderr);
         close(s);
         return 0;
     }

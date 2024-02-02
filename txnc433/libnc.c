@@ -112,9 +112,9 @@ int libnc_encode(const uint8_t* payload, size_t payload_size,
         packet.payload[i] = payload[i];
     }
 
-    if (payload_size == 0) {
+    if (payload_size == RESYNC) {
         // Special packet: counter resync
-        packet.counter_resync_flag = ~0;
+        packet.counter_resync_flag = 0x80;
     }
 
     hmac433_encode(secret_file.secret_data, sizeof(secret_file.secret_data),

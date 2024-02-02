@@ -147,7 +147,7 @@ int main(int argc, char** argv)
         payload[0] = 'C';
         size = 1;
     } else if (strcasecmp(cmd, "resync") == 0) {
-        size = 0;
+        size = RESYNC;
     }
 
     if (!dest(payload, size)) {

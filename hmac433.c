@@ -80,8 +80,10 @@ void hmac433_encode(
         uint64_t tmp;
         size_t i;
 
-        // Counter advanced to the next multiple of 256
-        (* counter) += 0x100;
+        // Counter advanced by a long way - so that it should be after the last
+        // message, even if the transmitter has forgotten about some messages.
+        // Low 8 bits must be 0.
+        (* counter) += 1 << 16;
         (* counter) &= ~((uint64_t) 0xff);
         tmp = (* counter);
 

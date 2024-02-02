@@ -51,7 +51,9 @@ static DateTime now_time = INVALID_TIME;
 static DateTime screen_off_time = INVALID_TIME;
 static DateTime message_off_time = INVALID_TIME;
 
-static char message_buffer[32];
+static char message_buffer_1[32];
+static char message_buffer_2[32];
+static bool message_is_long;
 static uint16_t clock_text_x = 0;
 static bool allow_sound = false;
 static unsigned alarm_active = 0;
@@ -179,7 +181,7 @@ static void update_display(void)
     display.setFont(&FreeSans9pt7b);
     display.setCursor(0, BLUE_AREA_Y - 1);
     if (now_time <= message_off_time) {
-        display.println(message_buffer);
+        display.println(message_buffer_1);
     }
 
     // Update the lower line on the display
@@ -191,6 +193,11 @@ static void update_display(void)
         alarm_get(&hour, &minute);
         snprintf(tmp, sizeof(tmp), "AL %02d:%02d", hour, minute);
         display.println(tmp);
+    } else if ((now_time <= message_off_time) && message_buffer_2[0]) {
+        // second line of message
+        display.setFont(&FreeSans9pt7b);
+        display.setCursor(0, LINE_1_Y);
+        display.println(message_buffer_2);
     } else if ((now_time <= screen_off_time) || alarm_active) {
         // show the time
         snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now_time.hour(), now_time.minute(), now_time.second());
@@ -201,9 +208,52 @@ static void update_display(void)
 
 void display_message(const char* msg)
 {
-    snprintf(message_buffer, sizeof(message_buffer), "%s", msg);
+    // Reset message buffer
+    message_buffer_1[0] = '\0';
+    message_buffer_2[0] = '\0';
+
+    // Will the message spill onto two lines?
+    size_t chars_on_first_line = 0;
+    display.setFont(&FreeSans9pt7b);
+
+    while (true) {
+        if ((chars_on_first_line >= (sizeof(message_buffer_1) - 1)) || !msg[chars_on_first_line]) {
+            // Reached the end of the message and it all fits on one line.
+            break;
+        }
+
+        // Try to copy one more character
+        message_buffer_1[chars_on_first_line] = msg[chars_on_first_line];
+        message_buffer_1[chars_on_first_line + 1] = '\0';
+
+        if (message_buffer_1[chars_on_first_line] == '\n') {
+            // Newline - go to the second line
+            message_buffer_1[chars_on_first_line] = '\0';
+            strncpy(message_buffer_2, &msg[chars_on_first_line + 1], sizeof(message_buffer_2) - 1);
+            message_buffer_2[sizeof(message_buffer_2) - 1] = '\0';
+            break;
+        }
+
+        int16_t x1, y1;
+        uint16_t h, w;
+        display.getTextBounds(message_buffer_1, 0, 0, &x1, &y1, &w, &h);
+        if (w > SCREEN_WIDTH) {
+            // Too many characters - go to the second line
+            message_buffer_1[chars_on_first_line] = '\0';
+            strncpy(message_buffer_2, &msg[chars_on_first_line], sizeof(message_buffer_2) - 1);
+            message_buffer_2[sizeof(message_buffer_2) - 1] = '\0';
+            break;
+        }
+
+        // There is still space - continue
+        chars_on_first_line++;
+    }
+
+    // Reset timers
     screen_off_time = now_time + SCREEN_ON_TIME;
     message_off_time = now_time + MESSAGE_ON_TIME;
+
+    // Draw
     update_display();
 }
 

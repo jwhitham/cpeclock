@@ -38,7 +38,7 @@ int hmac433_authenticate(
         new_counter |= (uint64_t) packet->counter_low;
         new_counter = new_counter << 8;
 
-        if (new_counter <= (* counter)) {
+        if (new_counter < (* counter)) {
             // This is not valid - the counter must always advance
             return 0;
         }

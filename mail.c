@@ -89,28 +89,14 @@ static void show_message(const uint8_t* payload)
 static void show_counter(uint64_t counter_copy, int rs_rc)
 {
     size_t i;
-    uint8_t tmp[14];
+    uint8_t tmp[64];
 
-    // big-endian base64 encoding, e.g. 0x1234 == "AAAAAAAAEjQ="
-    for (i = 0; i < 11; i++) {
-        uint8_t v = (uint8_t) (counter_copy >> (uint64_t) 58);
-        if (v < 26) {
-            v += 'A';
-        } else if (v < 52) {
-            v += 'a' - 26;
-        } else if (v < 62) {
-            v += '0' - 52;
-        } else if (v == 62) {
-            v = '+';
-        } else {
-            v = '/';
-        }
-        tmp[i] = v;
-        counter_copy = counter_copy << (uint64_t) 6;
-    }
-    tmp[11] = '=';
-    tmp[12] = (rs_rc & 0xf) + '0';
-    tmp[13] = '\0';
+    snprintf(tmp, sizeof(tmp), "%04x-%04x-%04x-%04x RS %d",
+                (unsigned) ((uint16_t) (counter_copy >> (uint64_t) 48)),
+                (unsigned) ((uint16_t) (counter_copy >> (uint64_t) 32)),
+                (unsigned) ((uint16_t) (counter_copy >> (uint64_t) 16)),
+                (unsigned) ((uint16_t) (counter_copy >> (uint64_t) 0)),
+                rs_rc);
     display_message(tmp);
 }
 
@@ -206,7 +192,7 @@ void mail_receive_messages(void)
 
     if (packet.counter_resync_flag) {
         // There is no payload - we just update the counter
-        display_message_lp("COUNT RESYNC");
+        display_message_lp("COUNTER\nRESYNCHED");
     } else {
         // process packet payload
         new_packet(packet.payload, rs_rc);

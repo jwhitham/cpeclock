@@ -111,6 +111,12 @@ int libnc_encode(const uint8_t* payload, size_t payload_size,
     for (i = 0; (i < payload_size) && (i < PACKET_PAYLOAD_SIZE); i++) {
         packet.payload[i] = payload[i];
     }
+
+    if (payload_size == 0) {
+        // Special packet: counter resync
+        packet.counter_resync_flag = ~0;
+    }
+
     hmac433_encode(secret_file.secret_data, sizeof(secret_file.secret_data),
                    &packet, &secret_file.counter);
     ncrs_encode(message, (const uint8_t *) &packet);

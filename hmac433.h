@@ -15,7 +15,7 @@ typedef struct hmac433_packet_s {
     uint8_t     payload[PACKET_PAYLOAD_SIZE];
     uint8_t     counter_low;
     uint8_t     hmac[PACKET_HMAC_SIZE];
-    uint8_t     unused;
+    uint8_t     counter_resync_flag;
 } hmac433_packet_t;
 
 int hmac433_authenticate(

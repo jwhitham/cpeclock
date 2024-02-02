@@ -76,6 +76,11 @@ int main(void)
         snprintf((char*) packet.payload, PACKET_PAYLOAD_SIZE, "msg%d", i);
         encode(&packet, &tx_counter);
         test_message(&packet, &rx_counter, 1);
+        // counter stays in sync
+        if (rx_counter != (tx_counter + 1)) {
+            fprintf(stderr, "lost sync\n");
+            return 1;
+        }
     }
 
     // Corrupt message
@@ -121,6 +126,31 @@ int main(void)
     test_message(&packet, &rx_counter, 0);
     rx_counter += (uint64_t) 1 << 60;
     test_message(&packet, &rx_counter, 1);
+
+    // Desynchronise the counter
+    rx_counter = 0;
+    test_message(&packet, &rx_counter, 0);
+
+    // Resynchronise the counter
+    packet.counter_resync_flag = ~0;
+    encode(&packet, &tx_counter);
+    test_message(&packet, &rx_counter, 1);
+    if (rx_counter != (tx_counter + 1)) {
+        fprintf(stderr, "unable to resynchronise the counter\n");
+        return 1;
+    }
+
+    // Normal packet after resync
+    packet.counter_resync_flag = 0;
+    snprintf((char*) packet.payload, PACKET_PAYLOAD_SIZE, "normal");
+    encode(&packet, &tx_counter);
+    test_message(&packet, &rx_counter, 1);
+    if (rx_counter != (tx_counter + 1)) {
+        fprintf(stderr, "lost sync\n");
+        return 1;
+    }
+
+
     printf("ok\n");
     return 0;
 }

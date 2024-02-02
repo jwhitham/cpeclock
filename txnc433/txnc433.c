@@ -99,6 +99,7 @@ int main(int argc, char** argv)
             "  set_day_night_time <hn> <mn> <hd> <md> = set the start time \n"
             "    for night as <hn>:<mn> and day as <hd>:<md>\n"
             "  counter = show counter\n"
+            "  resync = resynchronise counter\n"
             "  or: 1..6 bytes, separated by spaces, each written\n"
             "      as a decimal or as a hex value prefixed by 0x\n");
         return 1;
@@ -145,6 +146,8 @@ int main(int argc, char** argv)
     } else if (strcasecmp(cmd, "counter") == 0) {
         payload[0] = 'C';
         size = 1;
+    } else if (strcasecmp(cmd, "resync") == 0) {
+        size = 0;
     }
 
     if (!dest(payload, size)) {

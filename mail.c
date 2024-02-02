@@ -77,23 +77,53 @@ static void new_home_easy_message(uint32_t msg)
     display_message_lp(tmp);
 }
 
-static void new_packet(const uint8_t* payload, int rs_rc)
+
+static void show_message(const uint8_t* payload)
 {
     char tmp[16];
+    memcpy(tmp, &payload[1], PACKET_PAYLOAD_SIZE - 1);
+    tmp[PACKET_PAYLOAD_SIZE - 1] = '\0';
+    display_message(tmp);
+}
 
+static void show_counter(uint64_t counter_copy, int rs_rc)
+{
+    size_t i;
+    uint8_t tmp[14];
+
+    // big-endian base64 encoding, e.g. 0x1234 == "AAAAAAAAEjQ="
+    for (i = 0; i < 11; i++) {
+        uint8_t v = (uint8_t) (counter_copy >> (uint64_t) 58);
+        if (v < 26) {
+            v += 'A';
+        } else if (v < 52) {
+            v += 'a' - 26;
+        } else if (v < 62) {
+            v += '0' - 52;
+        } else if (v == 62) {
+            v = '+';
+        } else {
+            v = '/';
+        }
+        tmp[i] = v;
+        counter_copy = counter_copy << (uint64_t) 6;
+    }
+    tmp[11] = '=';
+    tmp[12] = (rs_rc & 0xf) + '0';
+    tmp[13] = '\0';
+    display_message(tmp);
+}
+
+static void new_packet(const uint8_t* payload, int rs_rc)
+{
     switch (payload[0]) {
         case 'M':
             // message for the screen
-            memcpy(tmp, &payload[1], PACKET_PAYLOAD_SIZE - 1);
-            tmp[PACKET_PAYLOAD_SIZE - 1] = '\0';
-            display_message(tmp);
+            show_message(payload);
             break;
         case 'C':
             // show counter
-            snprintf(tmp, sizeof(tmp), "%08x %d",
-                    (unsigned) hmac_message_counter,
-                    rs_rc);
-            display_message(tmp);
+            show_counter(hmac_message_counter, rs_rc);
             break;
         case 'T':
             // set time
@@ -174,7 +204,12 @@ void mail_receive_messages(void)
     // update HMAC counter in NVRAM
     save_counter();
 
-    // process packet payload
-    new_packet(packet.payload, rs_rc);
+    if (packet.counter_resync_flag) {
+        // There is no payload - we just update the counter
+        display_message_lp("COUNT RESYNC");
+    } else {
+        // process packet payload
+        new_packet(packet.payload, rs_rc);
+    }
 }
 

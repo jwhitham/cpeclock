@@ -92,6 +92,18 @@ int libnc_init(void)
     return 1;
 }
 
+int libnc_advance(void)
+{
+    if (!secret_fd) {
+        return 0;
+    }
+    secret_file.counter += 1 << 16;
+    if (!save_secret_file()) {
+        return 0;
+    }
+    return 1;
+}
+
 int libnc_encode(const uint8_t* payload, size_t payload_size,
                  uint8_t* message, size_t max_message_size)
 {

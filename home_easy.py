@@ -19,6 +19,7 @@ HUE_ADDRESS = ""
 HUE_PORT = 0
 TIMER_ADDRESS = ""
 TIMER_PORT = 0
+ENERGENIE_MASK = 0xf000000f
 
 
 from twisted.internet.protocol import DatagramProtocol # type: ignore
@@ -85,7 +86,10 @@ class HEData(AbstractData):
 
     def device_send(self, driver: tx433_driver.TX433_Driver) -> None:
         print ("broadcast %08x at %s" % (self.number, time.asctime()))
-        driver.write_he(self.number)
+        if (self.number & ENERGENIE_MASK) == ENERGENIE_MASK:
+            driver.write_energenie((self.number & ~ENERGENIE_MASK) >> 4)
+        else:
+            driver.write_he(self.number)
 
     def network_send(self, address: str, port: int) -> None:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -157,7 +161,7 @@ class Server433(DatagramProtocol):
             except:
                 number = 0
 
-            if 0 < number < (1 << 28):
+            if 0 < number < (1 << 32):
                 data = HEData(number)
             else:
                 data = self.decode_named_action(data_text)

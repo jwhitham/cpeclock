@@ -90,3 +90,18 @@ class TX433_Driver:
         # end of final symbol: 10
         self.__send_high_var(NC_PULSE, NC_PULSE)
         self.__finish()
+
+    def write_energenie(self, tx_code: int, attempts: int = 10) -> None:
+        """Send Energenie code."""
+        self.__start()
+        period = 850
+        for i in range(attempts):
+            for j in range(25):
+                if (tx_code << j) & (1 << 23):
+                    high = 620
+                else:
+                    high = 205
+                self.__pulses.append(pigpio.pulse(self.__mask, 0, high))
+                self.__pulses.append(pigpio.pulse(0, self.__mask, period - high))
+            self.__pulses.append(pigpio.pulse(0, 0, period * 7))
+        self.__finish()

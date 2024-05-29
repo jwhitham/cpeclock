@@ -117,8 +117,8 @@ class Server433(DatagramProtocol):
         on_flag = False
         if code & 0x10:
             on_flag = True
+            code &= ~0x10
 
-        code &= 0xfffffff ^ 0x10
         name = self.code_to_name_map.get(code, "")
         return (name, on_flag)
 

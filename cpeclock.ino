@@ -18,7 +18,7 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define BLUE_AREA_Y (SCREEN_HEIGHT / 4)
-#define LINE_1_Y ((SCREEN_HEIGHT / 2) + 16)
+#define LINE_1_Y ((SCREEN_HEIGHT / 2) + 17)
 #define LINE_2_Y (SCREEN_HEIGHT - 5)
 
 #define CAP_SAMPLES      20   // Number of samples to take for a capacitive touch read.
@@ -80,6 +80,9 @@ void setup()
     digitalWrite(LED_BUILTIN, HIGH);
     digitalWrite(INT_PIN, LOW);
 
+    screen_off_time = INVALID_TIME;
+    message_off_time = INVALID_TIME;
+
     const char* boot = "Boot";
     Serial.begin(9600);
     Serial.println(boot);
@@ -92,7 +95,6 @@ void setup()
     }
     display.clearDisplay();
     display.setTextWrap(false);
-    display_message(boot);
 
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");
@@ -112,8 +114,6 @@ void setup()
 
     now_time = rtc.now();
     millisecond_offset = millis();
-    screen_off_time = INVALID_TIME;
-    message_off_time = INVALID_TIME;
     allow_sound = CircuitPlayground.slideSwitch();
     alarm_active = false;
 
@@ -181,24 +181,21 @@ static void update_display(void)
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
+    display.dim(is_night_time() && !alarm_active);
 
     // Update the upper line on the display
     display.setFont(&FreeSans9pt7b);
     display.setCursor(0, BLUE_AREA_Y - 1);
     if (now_time <= message_off_time) {
         display.println(message_buffer_1);
+    } else if (alarm_active && alternator) {
+        display.println("ALARM!");
     }
 
     // Update the lower line on the display
     display.setFont(&FreeSans24pt7b);
     display.setCursor(clock_text_x, LINE_1_Y);
-    if (alarm_active && alternator) {
-        // alarm is sounding
-        uint8_t hour, minute;
-        alarm_get(&hour, &minute);
-        snprintf(tmp, sizeof(tmp), "ALARM");
-        display.println(tmp);
-    } else if ((now_time <= message_off_time) && message_buffer_2[0]) {
+    if ((now_time <= message_off_time) && message_buffer_2[0]) {
         // second line of message
         display.setFont(&FreeSans9pt7b);
         display.setCursor(0, LINE_1_Y);
@@ -206,7 +203,7 @@ static void update_display(void)
     } else if ((now_time <= screen_off_time) || alarm_active) {
         // show the time
         snprintf(tmp, sizeof(tmp), "%02d%c%02d", now_time.hour(),
-            alternator ? ':' : ' ', now_time.minute());
+            alternator ? ' ' : ':', now_time.minute());
         display.println(tmp);
     }
     display.display();

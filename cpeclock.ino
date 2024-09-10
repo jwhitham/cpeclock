@@ -4,7 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <RTClib.h>
-#include <Fonts/FreeSans18pt7b.h>
+#include <Fonts/FreeSans24pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
 #define EEPROM_ADDRESS 0x50
@@ -18,7 +18,7 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define BLUE_AREA_Y (SCREEN_HEIGHT / 4)
-#define LINE_1_Y ((SCREEN_HEIGHT / 2) + 8)
+#define LINE_1_Y ((SCREEN_HEIGHT / 2) + 16)
 #define LINE_2_Y (SCREEN_HEIGHT - 5)
 
 #define CAP_SAMPLES      20   // Number of samples to take for a capacitive touch read.
@@ -122,7 +122,7 @@ void setup()
         int16_t x1, y1;
         uint16_t w, h;
         display.setTextSize(1);
-        display.setFont(&FreeSans18pt7b);
+        display.setFont(&FreeSans24pt7b);
         display.getTextBounds("99:99", 0, LINE_1_Y, &x1, &y1, &w, &h);
         clock_text_x = (SCREEN_WIDTH - w) / 2;
     }
@@ -190,13 +190,13 @@ static void update_display(void)
     }
 
     // Update the lower line on the display
-    display.setFont(&FreeSans18pt7b);
+    display.setFont(&FreeSans24pt7b);
     display.setCursor(clock_text_x, LINE_1_Y);
     if (alarm_active && alternator) {
         // alarm is sounding
         uint8_t hour, minute;
         alarm_get(&hour, &minute);
-        snprintf(tmp, sizeof(tmp), "AL %02d:%02d", hour, minute);
+        snprintf(tmp, sizeof(tmp), "ALARM");
         display.println(tmp);
     } else if ((now_time <= message_off_time) && message_buffer_2[0]) {
         // second line of message
@@ -205,7 +205,8 @@ static void update_display(void)
         display.println(message_buffer_2);
     } else if ((now_time <= screen_off_time) || alarm_active) {
         // show the time
-        snprintf(tmp, sizeof(tmp), "%02d:%02d", now_time.hour(), now_time.minute());
+        snprintf(tmp, sizeof(tmp), "%02d%c%02d", now_time.hour(),
+            alternator ? ':' : ' ', now_time.minute());
         display.println(tmp);
     }
     display.display();

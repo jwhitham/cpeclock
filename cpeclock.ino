@@ -4,7 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <RTClib.h>
-#include <Fonts/FreeSans12pt7b.h>
+#include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 
 #define EEPROM_ADDRESS 0x50
@@ -18,7 +18,7 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define BLUE_AREA_Y (SCREEN_HEIGHT / 4)
-#define LINE_1_Y ((SCREEN_HEIGHT / 2) + 2)
+#define LINE_1_Y ((SCREEN_HEIGHT / 2) + 8)
 #define LINE_2_Y (SCREEN_HEIGHT - 5)
 
 #define CAP_SAMPLES      20   // Number of samples to take for a capacitive touch read.
@@ -43,7 +43,8 @@ static RTC_DS1307 rtc;     // RTC address 0x68
 
 
 static const DateTime INVALID_TIME = DateTime(2000, 1, 1);
-static const TimeSpan SCREEN_ON_TIME = TimeSpan(20);
+static const TimeSpan DAY_SCREEN_ON_TIME = TimeSpan(120);
+static const TimeSpan NIGHT_SCREEN_ON_TIME = TimeSpan(10);
 static const TimeSpan MESSAGE_ON_TIME = TimeSpan(5);
 static const TimeSpan ONE_DAY = TimeSpan(1, 0, 0, 0);
 
@@ -62,6 +63,8 @@ static uint32_t last_running_time = 0;
 static uint32_t sound_trigger = 0;
 static uint32_t strobe_trigger = 0;
 static uint16_t extension_button_pressed = 0;
+
+static TimeSpan get_screen_on_time();
 
 void setup()
 {
@@ -109,7 +112,7 @@ void setup()
 
     now_time = rtc.now();
     millisecond_offset = millis();
-    screen_off_time = now_time + SCREEN_ON_TIME;
+    screen_off_time = INVALID_TIME;
     message_off_time = INVALID_TIME;
     allow_sound = CircuitPlayground.slideSwitch();
     alarm_active = false;
@@ -119,8 +122,8 @@ void setup()
         int16_t x1, y1;
         uint16_t w, h;
         display.setTextSize(1);
-        display.setFont(&FreeSans12pt7b);
-        display.getTextBounds("99:99:99", 0, LINE_1_Y, &x1, &y1, &w, &h);
+        display.setFont(&FreeSans18pt7b);
+        display.getTextBounds("99:99", 0, LINE_1_Y, &x1, &y1, &w, &h);
         clock_text_x = (SCREEN_WIDTH - w) / 2;
     }
 
@@ -138,6 +141,8 @@ void setup()
 
     alarm_init();
     night_day_time_init();
+
+    screen_off_time = now_time + get_screen_on_time();
 
     attachInterrupt(digitalPinToInterrupt(RX433_PIN), rx433_interrupt, RISING);
 
@@ -185,7 +190,7 @@ static void update_display(void)
     }
 
     // Update the lower line on the display
-    display.setFont(&FreeSans12pt7b);
+    display.setFont(&FreeSans18pt7b);
     display.setCursor(clock_text_x, LINE_1_Y);
     if (alarm_active && alternator) {
         // alarm is sounding
@@ -200,7 +205,7 @@ static void update_display(void)
         display.println(message_buffer_2);
     } else if ((now_time <= screen_off_time) || alarm_active) {
         // show the time
-        snprintf(tmp, sizeof(tmp), "%02d:%02d:%02d", now_time.hour(), now_time.minute(), now_time.second());
+        snprintf(tmp, sizeof(tmp), "%02d:%02d", now_time.hour(), now_time.minute());
         display.println(tmp);
     }
     display.display();
@@ -250,7 +255,7 @@ void display_message(const char* msg)
     }
 
     // Reset timers
-    screen_off_time = now_time + SCREEN_ON_TIME;
+    screen_off_time = now_time + get_screen_on_time();
     message_off_time = now_time + MESSAGE_ON_TIME;
 
     // Draw
@@ -262,12 +267,15 @@ static int is_night_time()
     return night_day_time_test(now_time.hour(), now_time.minute());
 }
 
+static TimeSpan get_screen_on_time() {
+    return is_night_time() ? NIGHT_SCREEN_ON_TIME : DAY_SCREEN_ON_TIME;
+}
+
 void display_message_lp(const char* msg)
 {
-    // Low priority display message - only takes effect in the day time
-    if (!is_night_time()) {
-        display_message(msg);
-    }
+    // Low priority display message
+    // It might only take effect in the day time, but for now it works the same at any time
+    display_message(msg);
 }
 
 void clock_set(uint8_t hour, uint8_t minute, uint8_t second)
@@ -449,6 +457,7 @@ static void update_alarm(void)
     }
 }
 
+
 void loop()
 {
     uint8_t previous_second = now_time.second();
@@ -458,10 +467,6 @@ void loop()
         // at the start of the minute, update the millisecond offset
         if (now_time.second() == 0) {
             millisecond_offset = millis();
-        }
-        // In the day time, the display should be on
-        if (!is_night_time()) {
-            screen_off_time = now_time + SCREEN_ON_TIME;
         }
         // Check for the alarm
         alarm_active = alarm_update(now_time.hour(), now_time.minute());
@@ -480,7 +485,7 @@ void loop()
 
     if (!digitalRead(EXT_BUTTON_PIN)) {
         // extension button - multiple functions
-        screen_off_time = now_time + SCREEN_ON_TIME;
+        screen_off_time = now_time + get_screen_on_time();
         extension_button_pressed ++;
         switch (extension_button_pressed) {
             case 100:

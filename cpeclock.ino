@@ -95,6 +95,7 @@ void setup()
     }
     display.clearDisplay();
     display.setTextWrap(false);
+    display.display();
 
     if (!rtc.begin()) {
         Serial.println("rtc.begin() failed");

@@ -482,7 +482,7 @@ void loop()
     bool rightButton = CircuitPlayground.rightButton();
     bool leftButton = CircuitPlayground.leftButton();
 
-    if (!digitalRead(EXT_BUTTON_PIN)) {
+    if (digitalRead(EXT_BUTTON_PIN)) {
         // extension button - multiple functions
         screen_off_time = now_time + get_screen_on_time();
         extension_button_pressed ++;

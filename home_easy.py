@@ -25,7 +25,6 @@ ENERGENIE_MASK = 0xf000000f
 from twisted.internet.protocol import DatagramProtocol # type: ignore
 from twisted.internet import reactor # type: ignore
 import time, os, sys, subprocess, json, socket, shutil, tempfile
-import RPi.GPIO as GPIO  # type: ignore
 import urllib.request
 import argparse
 

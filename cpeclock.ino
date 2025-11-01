@@ -21,9 +21,6 @@
 #define LINE_1_Y ((SCREEN_HEIGHT / 2) + 17)
 #define LINE_2_Y (SCREEN_HEIGHT - 5)
 
-#define CAP_SAMPLES      20   // Number of samples to take for a capacitive touch read.
-#define CAP_THRESHOLD 800
-
 #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3c ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
@@ -272,9 +269,10 @@ static TimeSpan get_screen_on_time() {
 
 void display_message_lp(const char* msg)
 {
-    // Low priority display message
-    // It might only take effect in the day time, but for now it works the same at any time
-    display_message(msg);
+    // Low priority display message - day time only
+    if (!is_night_time()) {
+        display_message(msg);
+    }
 }
 
 void clock_set(uint8_t hour, uint8_t minute, uint8_t second)
